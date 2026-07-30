@@ -254,6 +254,7 @@ def plot_hr_diagram(
         raise TypeError('Data must be of type pandas.DataFrame')
     # Ensure required columns exist
     if error == False:
+        #NOTE: ADD ERRORS 
         required_cols = {"parallax", "phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"}
     else:
         required_cols = {"parallax", "phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"}
@@ -306,7 +307,7 @@ def hist(
         values (array-like): Values for histogram.
         bin_num (int, optional): Number of bins, defaults to 50.
         parallax (bool, optinal): Set this to be true if using parallax data. If true converts the data into parsecs. 
-        title (str, optional): Title of the plot. Default is 'Distances histogramm'.
+        title (str, optional): Title of the plot. Default is 'Distances histogram'.
         save_plot (bool, optional): If true, saves plot as a PDF file. Defaults to False. 
         file_name (str, optional): File name of the resulting plot. Default is 'distance_hist'. File identifier is added automatically.
         save_folder (str, optional): Optional folder destination. A destination folder could also be set using the file name.
