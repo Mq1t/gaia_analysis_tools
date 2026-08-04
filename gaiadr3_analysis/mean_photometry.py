@@ -286,10 +286,10 @@ def plot_hr_diagram(
 
     for _, row in df.iterrows():
         #Get absolute magnitude using apparent magnitude and parralax
-        M = [get_magnitude(row["phot_g_mean_mag"], get_distance(row["parallax"]))]
+        M = get_magnitude(row["phot_g_mean_mag"], get_distance(row["parallax"]))
         mag.append(M)
         #BP - RP = Colour
-        C = [get_bprp(row["phot_bp_mean_mag"], row["phot_rp_mean_mag"])]
+        C = get_bprp(row["phot_bp_mean_mag"], row["phot_rp_mean_mag"])
         colour.append(C)
             
         if error:
@@ -311,11 +311,12 @@ def plot_hr_diagram(
             colour, mag,
             xerr=colour_err,
             yerr=mag_err,
-            fmt='o',
+            fmt='none',
             markersize=1,
             ecolor='gray',
             elinewidth=0.5,
-            capsize=0
+            capsize=1,
+            alpha=0.4
         )
     else:
         plt.scatter(colour, mag, c="purple", s=1)
