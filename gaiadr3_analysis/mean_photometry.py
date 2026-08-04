@@ -222,13 +222,25 @@ def get_bprp(phot_bp_mean_mag, phot_rp_mean_mag):
     """
     return phot_bp_mean_mag - phot_rp_mean_mag
 
+def G_error(G_flux, G_flux_error):
+    G_mag_error = (2.5 / np.log(10)) * (G_flux_error / G_flux)
+    return G_mag_error
+
+def G_BP_error(BP_flux, BP_flux_error):
+    BP_mag_error = (2.5 / np.log(10)) * (BP_flux_error / BP_flux)
+    return BP_mag_error
+
+def G_RP_error(RP_flux, RP_flux_error):
+    RP_mag_error = (2.5 / np.log(10)) * (RP_flux_error / RP_flux)
+    return RP_mag_error
+
 
 def plot_hr_diagram(
         df, 
         error: bool = False,
         underlay: bool = False,
         xlim: list[int] = [-1, 5],
-        ylim: list[int] = [-5, 15],
+        ylim: list[int] = [0, 20],
         title: str = "Hertzsprung-Russell Diagram", 
         save_plot: bool = False, 
         file_name: str = "hr_diagram", 
@@ -255,22 +267,58 @@ def plot_hr_diagram(
     # Ensure required columns exist
     if error == False:
         #NOTE: ADD ERRORS 
-        required_cols = {"parallax", "phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"}
+        required_cols = {
+            "parallax", "parallax_error",
+            "phot_g_mean_mag", "phot_g_mean_flux", "phot_g_mean_flux_error",
+            "phot_bp_mean_mag", "phot_bp_mean_flux", "phot_bp_mean_flux_error",
+            "phot_rp_mean_mag", "phot_rp_mean_flux", "phot_rp_mean_flux_error"
+        }
     else:
         required_cols = {"parallax", "phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"}
     missing = required_cols - set(df.columns)
     if missing:
         raise KeyError(f"DataFrame is missing required columns: {', '.join(sorted(missing))}")
+    
+    mag = []
+    colour = []
+    mag_err = []
+    colour_err = []
 
-    #Get absolute magnitude using apparent magnitude and parralax
-    magnitude = [get_magnitude(row["phot_g_mean_mag"], get_distance(row["parallax"])) for _, row in df.iterrows()]
-    #BP - RP
-    bprp = [get_bprp(row["phot_bp_mean_mag"], row["phot_rp_mean_mag"]) for _, row in df.iterrows()]
+    for _, row in df.iterrows():
+        #Get absolute magnitude using apparent magnitude and parralax
+        M = [get_magnitude(row["phot_g_mean_mag"], get_distance(row["parallax"]))]
+        mag.append(M)
+        #BP - RP = Colour
+        C = [get_bprp(row["phot_bp_mean_mag"], row["phot_rp_mean_mag"])]
+        colour.append(C)
+            
+        if error:
+            Merr = G_error(row["phot_g_mean_flux"], row["phot_g_mean_flux_error"])
+            mag_err.append(Merr)
+
+            BP_err = G_BP_error(row["phot_bp_mean_flux"], row["phot_bp_mean_flux_error"])
+            RP_err = G_RP_error(row["phot_rp_mean_flux"], row["phot_rp_mean_flux_error"])
+            C_err = np.sqrt(BP_err**2 + RP_err**2)
+            colour_err.append(C_err)
+
+
 
     plt.figure()
     if underlay == True:
         print("NOT DONE YET")
-    plt.scatter(bprp, magnitude, c="purple", s=1)
+    if error:
+        plt.errorbar(
+            colour, mag,
+            xerr=colour_err,
+            yerr=mag_err,
+            fmt='o',
+            markersize=1,
+            ecolor='gray',
+            elinewidth=0.5,
+            capsize=0
+        )
+    else:
+        plt.scatter(colour, mag, c="purple", s=1)
     plt.xlabel(r"G$_{BP}$")
     plt.ylabel(r"M$_{G}$")
     if xlim is not None:
