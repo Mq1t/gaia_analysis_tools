@@ -37,7 +37,6 @@ def lightcurve(
         plot_g:bool = True,
         plot_bp:bool = True,
         plot_rp:bool = True,
-        rejectflags: bool=False, 
         period:float=None, 
         xlims:tuple[int|float, int|float]=None, 
         ylims:tuple[int|float, int|float]=None, 
@@ -55,8 +54,6 @@ def lightcurve(
         plot_g (bool, optional): If True, includes the G band in the plot. Defaults to True.
         plot_bp (bool, optional): If True, includes the BP band in the plot. Defaults to True.
         plot_rp (bool, optional): If True, includes the RP band in the plot. Defaults to True.
-        rejectflags (bool, optional): If True, filter out rows flagged as rejected (uses
-            'variability_flag_*_reject' columns). Defaults to False.
         period (float, optional): If provided, fold times on this period (phase plot). Defaults to None.
         xlims (tuple[float, float] or None, optional): X-axis limits. Defaults to None.
         ylims (tuple[float, float] or None, optional): Y-axis limits. Defaults to None.
@@ -95,7 +92,7 @@ def lightcurve(
     else:
         required_cols.update({'bp_mag', 'bp_obs_time'})
         if error:
-                    required_cols.update({'bp_flux', 'bp_flux_error'})
+            required_cols.update({'bp_flux', 'bp_flux_error'})
         bp = 'bp_mag'
         bp_time = 'bp_obs_time'
 
@@ -104,7 +101,7 @@ def lightcurve(
     else:
         required_cols.update({'rp_mag', 'rp_obs_time'})
         if error:
-                    required_cols.update({'rp_flux', 'rp_flux_error'})
+            required_cols.update({'rp_flux', 'rp_flux_error'})
         rp = 'rp_mag'
         rp_time = 'rp_obs_time'
 
@@ -115,15 +112,17 @@ def lightcurve(
     if missing:
         raise KeyError(f"DataFrame is missing required columns: {', '.join(sorted(missing))}")
 
-    # Filter Rejections if true
+    # Filter Rejections if true (removed for now. Column does not exist in DR4. Look for alternative. Maybe 'phot_ccd_proc_flags'?)
+    """
     if rejectflags:
         g_df = df[df['variability_flag_g_reject'] == False]
         bp_df = df[df['variability_flag_bp_reject'] == False]
         rp_df = df[df['variability_flag_rp_reject'] == False]
     else:
-        g_df = df
-        bp_df = df
-        rp_df = df
+    """
+    g_df = df
+    bp_df = df
+    rp_df = df
 
     print(f"Len g, bp, and rp datasets respectively: {len(g_df)}, {len(bp_df)}, {len(rp_df)}")
     #X-Value: G Transit time
@@ -148,7 +147,7 @@ def lightcurve(
     #Calculate error values
     if error:
         if plot_g:
-            g_err = 1.0857362047581294 * (df['g_transit_flux_error'] / df['g_transit_flux'])
+            g_err = 1.0857362047581294 * (df['g_flux_error'] / df['g_flux'])
         if plot_bp:
             bp_err = 1.0857362047581294 * (df['bp_flux_error'] / df['bp_flux'])
         if plot_rp:
@@ -216,7 +215,7 @@ def lightcurve(
                 ax.set_ylim(ylims[1], ylims[0])
         if xlims is not None:
             for ax in axes: 
-                ax.set_ylim(xlims[0], xlims[1])
+                ax.set_xlim(xlims[0], xlims[1])
 
     plt.tight_layout()
 
@@ -233,8 +232,8 @@ def lightcurve(
     plt.show()
 
 #t is times in julian days. If time is given in non-julian date already then jd = False when calling the function.
-#t is expected to be df['g_transit_time']
-#mag is expected to be df['g_transit_mag']
+#t is expected to be df['g_obs_time']
+#mag is expected to be df['g_mag']
 def lomb_scargle(
     t: pd.DataFrame = None, 
     mag: pd.DataFrame = None, 
@@ -270,7 +269,7 @@ def lomb_scargle(
     Returns:
         pandas.DataFrame(): A pandas data frame containing the following columns: ["period", "power", "false alarm probability"].
     """
-    # Default example for if t & y are not inputted.
+    # Default example for if t & y are not inputted. THIS IS NOT REAL DATA
     if t is None or mag is None:
         rand = np.random.default_rng(42)
         #Time
@@ -278,7 +277,7 @@ def lomb_scargle(
         #Frequency
         mag = np.sin(2 * np.pi * t) + 0.1 * rand.standard_normal(100)
 
-    #Convert Julian Days
+    #Convert Julian Days to relative
     if jd:
         t = t - t.min()
 
