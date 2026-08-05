@@ -45,7 +45,7 @@ def lightcurve(
         file_name: str = "lightcurve",
         save_folder: str = default_folder):
     """
-    Plot G, Bp and Rp magnitude light curves in time.
+    Plot G, BP and RP magnitude light curves in time.
 
     Args:
         df (pd.DataFrame): DataFrame containing photometry and time columns.
@@ -182,7 +182,7 @@ def lightcurve(
                     ecolor='green',       # error bar color
                     elinewidth=0.5,
                     capsize=2,
-                    alpha=0.4,           # reduce clutter, makes it slightly transparetn
+                    alpha=0.4,           # reduce clutter, makes it slightly transparent
                 )
             axes[0].scatter(x_g, y_g, c ='green', s = 4, label='G Band')
             axes[0].legend()
@@ -263,7 +263,7 @@ def lomb_scargle(
 
 
     Returns:
-        pandas.DataFrame(): A pandas data frame containing to following columns: ["period", "power", "false alarm probability"].
+        pandas.DataFrame(): A pandas data frame containing the following columns: ["period", "power", "false alarm probability"].
     """
     # Default example for if t & y are not inputted.
     if t is None or mag is None:
