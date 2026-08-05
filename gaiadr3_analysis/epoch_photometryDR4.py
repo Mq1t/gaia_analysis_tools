@@ -74,37 +74,42 @@ def lightcurve(
     if not isinstance(df, pd.DataFrame):
         raise TypeError('Data must be of type pandas.DataFrame')
     # Ensure required columns exist
-    if error == False:
-        required_cols = {'g_transit_mag', 'bp_mag', 'rp_mag', 'g_transit_time', 'bp_obs_time', 'rp_obs_time'}
-    else:
-        required_cols = {'g_transit_mag', 'bp_mag', 'rp_mag', 'g_transit_time', 'bp_obs_time', 'rp_obs_time', 'g_transit_flux', 'bp_flux', 'rp_flux', 'g_transit_flux_error', 'bp_flux_error', 'rp_flux_error'}
-    missing = required_cols - set(df.columns)
-    
+
+    required_cols = set()
+
     #Set subplot_num (only applies if over_plot is false)
     subplot_num = 3
 
     # Only use required variables and columns
     if plot_g == False:
-        missing = missing - set('g_transit_mag', 'g_transit_time', 'g_transit_flux', 'g_transit_flux_error')
         subplot_num -= 1
     else:
+        required_cols.update({'g_mag', 'g_obs_time'})
+        if error:
+            required_cols.update({'g_flux', 'g_flux_error'})
         g = 'g_transit_mag'
         g_time = 'g_transit_time'
 
     if plot_bp == False:
-        missing = missing - set('bp_mag', 'bp_obs_time', 'bp_flux', 'bp_flux_error')
         subplot_num -= 1
     else:
+        required_cols.update({'bp_mag', 'bp_obs_time'})
+        if error:
+                    required_cols.update({'bp_flux', 'bp_flux_error'})
         bp = 'bp_mag'
         bp_time = 'bp_obs_time'
 
-
     if plot_rp == False:
-        missing = missing - set('rp_mag', 'rp_obs_time', 'rp_flux', 'rp_flux_error')
         subplot_num -=1
     else:
+        required_cols.update({'rp_mag', 'rp_obs_time'})
+        if error:
+                    required_cols.update({'rp_flux', 'rp_flux_error'})
         rp = 'rp_mag'
         rp_time = 'rp_obs_time'
+
+    missing = required_cols - set(df.columns)
+
 
     # Raise error if columns missing
     if missing:
