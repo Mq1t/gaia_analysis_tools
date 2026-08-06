@@ -1,7 +1,7 @@
 """Tests for mean_photometry.py
 
 Tests cover input validation for ra_vs_dec and pmra_vs_pmdec, unit tests for get_distance, get_magnitude, 
-get_bprp, and gaussian, and smoke tests for plot_hr_diagram, hist, and fittedHist. Matplotlib rendering 
+get_bprp, and gaussian, and smoke tests for plot_hr_diagram, hist, and fitted_hist. Matplotlib rendering 
 is patched out so tests run without a display.
 """
 
@@ -12,7 +12,7 @@ from unittest.mock import patch
 from gaiadr3_analysis.mean_photometry import (
     ra_vs_dec, pmra_vs_pmdec,
     get_distance, get_magnitude, get_bprp,
-    plot_hr_diagram, hist, gaussian, fittedHist,
+    plot_hr_diagram, hist, gaussian, fitted_hist,
 )
 
 
@@ -284,18 +284,18 @@ def test_hist_accepts_custom_bin_count(distances):
         hist(distances, bin_num=20)
 
 
-# fittedHist
+# fitted_hist
 def test_fitted_hist_runs_without_error(distances):
-    """Checks that fittedHist completes without error on valid input.
+    """Checks that fitted_hist completes without error on valid input.
 
     Args:
         distances (pd.Series): Sample distance values fixture.
     """
     with patch("matplotlib.pyplot.show"):
-        fittedHist(distances, range=[50, 400])
+        fitted_hist(distances, range=[50, 400])
 
 def test_fitted_hist_runs_with_parallax_conversion():
-    """Checks that fittedHist runs without error when parallax conversion is enabled.
+    """Checks that fitted_hist runs without error when parallax conversion is enabled.
 
     Uses a larger synthetic parallax dataset centred around 5 mas so that curve_fit has a well-shaped histogram
     to converge on after 1000/parallax conversion.
@@ -303,4 +303,4 @@ def test_fitted_hist_runs_with_parallax_conversion():
     rng = np.random.default_rng(42)
     parallax_values = pd.Series(rng.normal(loc=5.0, scale=0.5, size=200))
     with patch("matplotlib.pyplot.show"):
-        fittedHist(parallax_values, parallax=True, range=[100, 400])
+        fitted_hist(parallax_values, parallax=True, range=[100, 400])
