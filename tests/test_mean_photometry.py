@@ -9,7 +9,7 @@ import pytest
 import numpy as np
 import pandas as pd
 from unittest.mock import patch
-from gaiadr3_analysis.mean_photometry import (
+from gaia_analysis_tools.mean_photometry import (
     ra_vs_dec, pmra_vs_pmdec,
     get_distance, get_magnitude, get_bprp,
     plot_hr_diagram, hist, gaussian, fitted_hist,
