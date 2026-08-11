@@ -8,7 +8,7 @@ import pytest
 import numpy as np
 import pandas as pd
 from unittest.mock import patch
-from gaiadr3_analysis.epoch_photometry import phase, lightcurve, lomb_scargle, pdm
+from gaia_analysis_tools.epoch_photometry import phase, lightcurve, lomb_scargle, pdm
 
 # Fixtures
 @pytest.fixture

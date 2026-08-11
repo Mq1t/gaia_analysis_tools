@@ -12,7 +12,7 @@ logic can be tested.
 import pytest
 import pandas as pd
 from unittest.mock import patch, MagicMock
-from gaiadr3_analysis.gaia_input import (
+from gaia_analysis_tools.gaia_input import (
     DEFAULT_RELEASE,
     gaia_designation,
     is_value_masked,
