@@ -45,11 +45,15 @@ def ra_vs_dec(
     """
     if not isinstance(df, pd.DataFrame):
         raise TypeError('Data must be of type pandas.DataFrame')
+
+    required_cols = set()
+    
     # Ensure required columns exist
     if error == False:
-        required_cols = {'ra', 'dec'}
+        required_cols.update({'ra', 'dec'})
+
     else:
-        required_cols = {'ra', 'dec', 'ra_error', 'dec_error'}
+        required_cols.update({'ra', 'dec', 'ra_error', 'dec_error'})
     missing = required_cols - set(df.columns)
     if missing:
         raise KeyError(f"DataFrame is missing required columns: {', '.join(sorted(missing))}")
@@ -136,10 +140,12 @@ def pmra_vs_pmdec(
     if not isinstance(df, pd.DataFrame):
         raise TypeError('Data must be of type pandas.DataFrame')
     # Ensure required columns exist
+
+    required_cols = set()
     if error == False:
-        required_cols = {'pmra', 'pmdec'}
+        required_cols.update({'pmra', 'pmdec'})
     else:
-        required_cols = {'pmra_error', 'pmdec_error'}
+        required_cols.update({'pmra', 'pmdec', 'pmra_error', 'pmdec_error'})
     missing = required_cols - set(df.columns)
     if missing:
         raise KeyError(f"DataFrame is missing required columns: {', '.join(sorted(missing))}")
@@ -265,16 +271,16 @@ def plot_hr_diagram(
     if not isinstance(df, pd.DataFrame):
         raise TypeError('Data must be of type pandas.DataFrame')
     # Ensure required columns exist
-    if error == False:
-        #NOTE: ADD ERRORS 
-        required_cols = {
+    required_cols = set()
+    if error == True:
+        required_cols.update({
             "parallax", "parallax_error",
             "phot_g_mean_mag", "phot_g_mean_flux", "phot_g_mean_flux_error",
             "phot_bp_mean_mag", "phot_bp_mean_flux", "phot_bp_mean_flux_error",
             "phot_rp_mean_mag", "phot_rp_mean_flux", "phot_rp_mean_flux_error"
-        }
+        })
     else:
-        required_cols = {"parallax", "phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"}
+        required_cols.update({"parallax", "phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"})
     missing = required_cols - set(df.columns)
     if missing:
         raise KeyError(f"DataFrame is missing required columns: {', '.join(sorted(missing))}")
@@ -365,7 +371,7 @@ def hist(
         None
     """
 
-    #Adjust if dist given in parallax
+    #Adjust if dist given in parallax (convert from mas to parsecs)
     if parallax:
         values = (1000/values)
     
@@ -413,7 +419,7 @@ def fitted_hist(
     Returns: 
         None
     """
-    #Magnitude, Y-Values
+    #Convert if using parallax from mas to parsecs
     if parallax:
         values = (1000/values)
 

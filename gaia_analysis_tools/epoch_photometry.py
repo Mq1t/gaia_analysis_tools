@@ -6,7 +6,7 @@ from astropy.timeseries import LombScargle
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from PyAstronomy.pyTiming import pyPDM
-from .constants import JD_offset
+from .constants import JD_offset, DEFAULT_RELEASE
 import os
 
 
@@ -31,6 +31,7 @@ def phase(t, T_0, P):
 #Plot G, Bp and Rp magnitude light curves in time.
 def lightcurve(
         df:pd.DataFrame, 
+        release:bool = DEFAULT_RELEASE,
         error:bool = False,
         title:str='Flux Vs. Time', 
         overplot:bool=True, 
@@ -45,18 +46,19 @@ def lightcurve(
         file_name: str = "lightcurve",
         save_folder: str = default_folder):
     """
-    Plot G, Bp and Rp magnitude light curves in time.
+    Plot G, BP and RP magnitude light curves in time.
 
     Args:
         df (pd.DataFrame): DataFrame containing photometry and time columns.
         error (bool): If true the plot will include error bars using required columns 'g_transit_flux_error', 'bp_flux_error', 'rp_flux_error'.
+        release (bool): The data release. This mostly affects column names used.
         title (str, optional): Plot title. Defaults to 'Flux Vs. Time'.
         overplot (bool, optional): If True, overplot all bands on a single axes. Defaults to True.
         plot_g (bool, optional): If True, includes the G band in the plot. Defaults to True.
         plot_bp (bool, optional): If True, includes the BP band in the plot. Defaults to True.
         plot_rp (bool, optional): If True, includes the RP band in the plot. Defaults to True.
         rejectflags (bool, optional): If True, filter out rows flagged as rejected (uses
-            'variability_flag_*_reject' columns). Defaults to False.
+                    'variability_flag_*_reject' columns). Defaults to False.
         period (float, optional): If provided, fold times on this period (phase plot). Defaults to None.
         xlims (tuple[float, float] or None, optional): X-axis limits. Defaults to None.
         ylims (tuple[float, float] or None, optional): Y-axis limits. Defaults to None.
@@ -74,44 +76,58 @@ def lightcurve(
     if not isinstance(df, pd.DataFrame):
         raise TypeError('Data must be of type pandas.DataFrame')
     # Ensure required columns exist
-    if error == False:
-        required_cols = {'g_transit_mag', 'bp_mag', 'rp_mag', 'g_transit_time', 'bp_obs_time', 'rp_obs_time'}
-    else:
-        required_cols = {'g_transit_mag', 'bp_mag', 'rp_mag', 'g_transit_time', 'bp_obs_time', 'rp_obs_time', 'g_transit_flux', 'bp_flux', 'rp_flux', 'g_transit_flux_error', 'bp_flux_error', 'rp_flux_error'}
-    missing = required_cols - set(df.columns)
-    
+
+    required_cols = set()
+
     #Set subplot_num (only applies if over_plot is false)
     subplot_num = 3
 
     # Only use required variables and columns
     if plot_g == False:
-        missing = missing - set('g_transit_mag', 'g_transit_time', 'g_transit_flux', 'g_transit_flux_error')
         subplot_num -= 1
     else:
-        g = 'g_transit_mag'
-        g_time = 'g_transit_time'
+        if release == "dr3":
+            required_cols.update({'g_transit_mag', 'g_transit_time'})
+            if error:
+                required_cols.update({'g_transit_flux', 'g_transit_flux_error'})
+            g = 'g_tansit_mag'
+            g_time = 'g_transit_time'
+        elif release == "dr4":
+            required_cols.update({'g_mag', 'g_obs_time'})
+            if error:
+                required_cols.update({'g_flux', 'g_flux_error'})
+            g = 'g_mag'
+            g_time = 'g_obs_time'
+
 
     if plot_bp == False:
-        missing = missing - set('bp_mag', 'bp_obs_time', 'bp_flux', 'bp_flux_error')
         subplot_num -= 1
     else:
+        required_cols.update({'bp_mag', 'bp_obs_time'})
+        if error:
+            required_cols.update({'bp_flux', 'bp_flux_error'})
         bp = 'bp_mag'
         bp_time = 'bp_obs_time'
 
-
     if plot_rp == False:
-        missing = missing - set('rp_mag', 'rp_obs_time', 'rp_flux', 'rp_flux_error')
         subplot_num -=1
     else:
+        required_cols.update({'rp_mag', 'rp_obs_time'})
+        if error:
+            required_cols.update({'rp_flux', 'rp_flux_error'})
         rp = 'rp_mag'
         rp_time = 'rp_obs_time'
+
+    missing = required_cols - set(df.columns)
+
 
     # Raise error if columns missing
     if missing:
         raise KeyError(f"DataFrame is missing required columns: {', '.join(sorted(missing))}")
 
-    # Filter Rejections if true
-    if rejectflags:
+    # Filter Rejections if true for DR3 (Column does not exist in DR4. Look for alternative. Maybe 'phot_ccd_proc_flags'?)
+
+    if rejectflags == True and release == "dr3":
         g_df = df[df['variability_flag_g_reject'] == False]
         bp_df = df[df['variability_flag_bp_reject'] == False]
         rp_df = df[df['variability_flag_rp_reject'] == False]
@@ -143,11 +159,11 @@ def lightcurve(
     #Calculate error values
     if error:
         if plot_g:
-            g_err = 1.0857362047581294 * (df['g_transit_flux_error'] / df['g_transit_flux'])
+            g_err = 1.0857362047581294 * (g_df['g_flux_error'] / g_df['g_flux'])
         if plot_bp:
-            bp_err = 1.0857362047581294 * (df['bp_flux_error'] / df['bp_flux'])
+            bp_err = 1.0857362047581294 * (bp_df['bp_flux_error'] / bp_df['bp_flux'])
         if plot_rp:
-            rp_err = 1.0857362047581294 * (df['rp_flux_error'] / df['rp_flux'])
+            rp_err = 1.0857362047581294 * (rp_df['rp_flux_error'] / rp_df['rp_flux'])
 
     if overplot is True:
         plt.xlabel(x_label)
@@ -182,7 +198,7 @@ def lightcurve(
                     ecolor='green',       # error bar color
                     elinewidth=0.5,
                     capsize=2,
-                    alpha=0.4,           # reduce clutter, makes it slightly transparetn
+                    alpha=0.4,           # reduce clutter, makes it slightly transparent
                 )
             axes[0].scatter(x_g, y_g, c ='green', s = 4, label='G Band')
             axes[0].legend()
@@ -211,7 +227,7 @@ def lightcurve(
                 ax.set_ylim(ylims[1], ylims[0])
         if xlims is not None:
             for ax in axes: 
-                ax.set_ylim(xlims[0], xlims[1])
+                ax.set_xlim(xlims[0], xlims[1])
 
     plt.tight_layout()
 
@@ -228,8 +244,8 @@ def lightcurve(
     plt.show()
 
 #t is times in julian days. If time is given in non-julian date already then jd = False when calling the function.
-#t is expected to be df['g_transit_time']
-#mag is expected to be df['g_transit_mag']
+#t is expected to be df['g_obs_time']
+#mag is expected to be df['g_mag']
 def lomb_scargle(
     t: pd.DataFrame = None, 
     mag: pd.DataFrame = None, 
@@ -263,9 +279,9 @@ def lomb_scargle(
 
 
     Returns:
-        pandas.DataFrame(): A pandas data frame containing to following columns: ["period", "power", "false alarm probability"].
+        pandas.DataFrame(): A pandas data frame containing the following columns: ["period", "power", "false alarm probability"].
     """
-    # Default example for if t & y are not inputted.
+    # Default example for if t & y are not inputted. THIS IS NOT REAL DATA
     if t is None or mag is None:
         rand = np.random.default_rng(42)
         #Time
@@ -273,7 +289,7 @@ def lomb_scargle(
         #Frequency
         mag = np.sin(2 * np.pi * t) + 0.1 * rand.standard_normal(100)
 
-    #Convert Julian Days
+    #Convert Julian Days to relative
     if jd:
         t = t - t.min()
 
@@ -392,6 +408,7 @@ def pdm(
     Args:
         t (array-like): Time values (JD or relative).
         mag (array-like): Magnitudes or fluxes corresponding to 't'. 
+        release (bool): The data release. This mostly affects column names.
         title (str, optional): Display title for the corresponding plot. Defaults to 'Phase Dispersion Minimization'.
         bins (int, optional): Number of bins to be used in the PDM analysis. Defaults to 50.
         covers (int, optional): Number of covers to be uesd in the PDM analysis. Defaults to 3.
