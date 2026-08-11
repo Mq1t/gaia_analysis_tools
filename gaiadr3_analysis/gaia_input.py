@@ -1,6 +1,6 @@
 """gaia_input.py
 
-Load GAIA data into a pandas DataFrame via three input methods:
+Load GAIA data into a DataFrame via three input methods:
     1. ADQL query
     2. CSV file upload
     3. Datalink
@@ -17,6 +17,7 @@ from astroquery.simbad import Simbad
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 from .constants import SPTYPE_TEFF_RANGES
+from .constants import DEFAULT_RELEASE
 
 GAIA_RELEASE_TABLES = {
     "dr3": {
@@ -26,7 +27,7 @@ GAIA_RELEASE_TABLES = {
         "datalink_release": "Gaia DR3",
     },
     "dr4": {
-        # DR4 is unreleased and may need updating once DR4's final data model is published.
+        # DR4 is unreleased and may need updating.
         "source_table": "gaiadr4.gaia_source",
         "ap_table": "gaiadr4.ap_xp",
         "designation_prefix": "Gaia DR4",
@@ -34,12 +35,12 @@ GAIA_RELEASE_TABLES = {
     },
 }
 
-def gaia_designation(gaia_id, release="dr3"):
+def gaia_designation(gaia_id, release=DEFAULT_RELEASE):
     """Build a Gaia designation string for a source ID, for the given release.
 
     Args:
         gaia_id (int): Gaia source ID.
-        release (str, optional): Gaia data release to build the designation for, "dr3" or "dr4". Defaults to "dr3".
+        release (str, optional): Gaia data release to build the designation for. Defaults to DEFAULT_RELEASE.
 
     Returns:
         str: e.g. "Gaia DR3 123456789" or "Gaia DR4 123456789".
@@ -47,9 +48,8 @@ def gaia_designation(gaia_id, release="dr3"):
     return f"{GAIA_RELEASE_TABLES[release]['designation_prefix']} {gaia_id}"
 
 def is_value_masked(value):
-    """Check whether a SIMBAD table value is masked (i.e. missing/not on file).
-
-    SIMBAD results come back as astropy Tables, where a cell with no data on file is a masked value rather than None. 
+    """Check whether a SIMBAD table value is masked (i.e. missing/not on file). SIMBAD results come back as astropy tables, 
+    where a cell with no data on file is a masked value rather than None. 
 
     Args:
         value: A value pulled from an astropy table row.
@@ -59,12 +59,12 @@ def is_value_masked(value):
     """
     return hasattr(value, "mask") and value.mask
 
-def query_simbad_by_gaia_ids(gaia_ids, release="dr3", error_context="SIMBAD lookup"):
-    """Query SIMBAD for one or more Gaia source IDs, by their release-specific designation.
+def query_simbad_by_gaia_ids(gaia_ids, release=DEFAULT_RELEASE, error_context="SIMBAD lookup"):
+    """Query SIMBAD for one or more Gaia source IDs.
 
     Args:
         gaia_ids (list[int]): Gaia source ID(s) to look up.
-        release (str, optional): Gaia data release the IDs belong to, "dr3" or "dr4". Defaults to "dr3".
+        release (str, optional): Gaia data release the IDs belong to. Defaults to DEFAULT_RELEASE.
         error_context (str, optional): Used in the printed message if the query fails.
 
     Returns:
@@ -79,7 +79,7 @@ def query_simbad_by_gaia_ids(gaia_ids, release="dr3", error_context="SIMBAD look
         return None
 
 def save_dataframe_csv(df, file_name, default_name):
-    """Save a DataFrame to a CSV file, formatting the file name consistently.
+    """Save a DataFrame to a CSV file.
 
     Args:
         df (pandas.DataFrame): Data to save.
@@ -153,7 +153,8 @@ def plot_positions(points, title, save_plot=False, plot_file_name=None, center=N
 
         ras = [p[1] for p in points]
         decs = [p[2] for p in points]
-        ax.scatter(ras, decs, c="tab:blue", s=40, zorder=3)
+        marker_size = 40 if len(points) == 1 else 15
+        ax.scatter(ras, decs, c="tab:blue", s=marker_size, zorder=3)
 
         if show_labels:
             for label, ra, dec in points:
@@ -183,7 +184,7 @@ def plot_positions(points, title, save_plot=False, plot_file_name=None, center=N
         print(f"  (plotting skipped: {e})")
 
 def strip_name_prefix(raw_name):
-    """Strip a leading 'NAME ' prefix from a raw SIMBAD main_id, for cleaner display.
+    """Strip a leading 'NAME ' prefix from a raw SIMBAD main_id for cleaner display.
 
     Args:
         raw_name (str): Raw SIMBAD identifier/name string.
@@ -214,7 +215,7 @@ def find_name_and_binaries(identifier_table):
             binaries.append(row)
     return common_name, binaries
 
-def fetch_coordinates(gaia_ids, release="dr3"):
+def fetch_coordinates(gaia_ids, release=DEFAULT_RELEASE, batch_size=300):
     """Look up RA/Dec (in degrees) for one or more Gaia source IDs, for plotting.
 
     Tries SIMBAD first. Any ID SIMBAD has no usable position for (no cross-match, or a masked/missing ra/dec) 
@@ -223,11 +224,14 @@ def fetch_coordinates(gaia_ids, release="dr3"):
 
     Args:
         gaia_ids (int or list[int]): Gaia source ID(s).
-        release (str, optional): Gaia data release to look up, "dr3" or "dr4". Defaults to "dr3".
+        release (str, optional): Gaia data release to look up, "dr3" or "dr4". Defaults to DEFAULT_RELEASE.
+        batch_size (int, optional): Max number of IDs per batched SIMBAD/Gaia archive query, so a
+            large cluster doesn't get sent as one oversized request. Defaults to 300.
 
     Returns:
-        list[tuple[str, float, float]]: (label, ra_deg, dec_deg) for each ID successfully resolved
-        to a position. Label is the SIMBAD name if available, else the Gaia ID itself.
+        list[tuple[int, str, float, float]]: (gaia_id, label, ra_deg, dec_deg) for each ID
+        successfully resolved to a position. Label is the SIMBAD name if available, otherwise the Gaia ID. 
+        A partial failure only omits the specific ID(s) that couldn't be resolved.
     """
     if isinstance(gaia_ids, int):
         gaia_ids = [gaia_ids]
@@ -238,16 +242,16 @@ def fetch_coordinates(gaia_ids, release="dr3"):
 
     found_ids = set()
 
-    result = query_simbad_by_gaia_ids(gaia_ids, release, error_context="coordinate lookup for plotting")
+    for i in range(0, len(gaia_ids), batch_size):
+        chunk = gaia_ids[i:i + batch_size]
+        result = query_simbad_by_gaia_ids(chunk, release, error_context="coordinate lookup for plotting")
 
-    if result is not None:
-        for i, row in enumerate(result):
-            gid = gaia_ids[i] if i < len(gaia_ids) else None
-            if gid is None:
-                continue
+        if result is None:
+            continue
+
+        for gid, row in zip(chunk, result):
             try:
                 label = strip_name_prefix(row["main_id"]) if "main_id" in result.colnames and row["main_id"] else str(gid)
-
                 if "ra" in result.colnames and "dec" in result.colnames:
                     ra_val, dec_val = row["ra"], row["dec"]
                 else:
@@ -263,26 +267,27 @@ def fetch_coordinates(gaia_ids, release="dr3"):
                 else:
                     coord = SkyCoord(ra=ra_val * u.deg, dec=dec_val * u.deg)
 
-                points.append((label, coord.ra.deg, coord.dec.deg))
+                points.append((gid, label, coord.ra.deg, coord.dec.deg))
                 found_ids.add(gid)
             except Exception:
                 continue
 
     # Fall back to the Gaia archive
     missing_ids = [gid for gid in gaia_ids if gid not in found_ids]
-    if missing_ids:
+    source_table = GAIA_RELEASE_TABLES[release]["source_table"]
+    for i in range(0, len(missing_ids), batch_size):
+        chunk = missing_ids[i:i + batch_size]
         try:
-            id_list = ",".join(str(g) for g in missing_ids)
-            source_table = GAIA_RELEASE_TABLES[release]["source_table"]
+            id_list = ",".join(str(g) for g in chunk)
             gaia_query = f"SELECT source_id, ra, dec FROM {source_table} WHERE source_id IN ({id_list})"
             job = Gaia.launch_job(gaia_query)
             gaia_df = job.get_results().to_pandas()
             for _, row in gaia_df.iterrows():
                 gid = int(row["source_id"])
-                points.append((str(gid), float(row["ra"]), float(row["dec"])))
+                points.append((gid, str(gid), float(row["ra"]), float(row["dec"])))
                 found_ids.add(gid)
         except Exception as e:
-            print(f"  (Gaia archive fallback lookup for plotting failed: {e})")
+            print(f"  (Gaia archive fallback lookup failed for a chunk of {len(chunk)} IDs: {e})")
 
     not_found = [gid for gid in gaia_ids if gid not in found_ids]
     if not_found:
@@ -291,7 +296,7 @@ def fetch_coordinates(gaia_ids, release="dr3"):
 
     return points
 
-def fetch_common_names(gaia_ids, batch_size=300, release="dr3"):
+def fetch_common_names(gaia_ids, batch_size=300, release=DEFAULT_RELEASE):
     """Look up a display name for one or more Gaia source IDs, via SIMBAD.
 
     Prefers a true name when SIMBAD has one on file. Otherwise falls back to the star's main SIMBAD identifier.
@@ -299,9 +304,8 @@ def fetch_common_names(gaia_ids, batch_size=300, release="dr3"):
     Args:
         gaia_ids (list[int]): Gaia source ID(s).
         batch_size (int, optional): Max number of IDs per batched proper-name query. Defaults to 300.
-        release (str, optional): Gaia data release the IDs belong to, "dr3" or "dr4". Note SIMBAD
-            has no Gaia DR4 cross-matches yet (DR4 is unreleased), so with release="dr4" this will
-            currently return no names for any ID. Defaults to "dr3".
+        release (str, optional): Gaia data release the IDs belong to. Note SIMBAD has no Gaia DR4 cross-matches yet (DR4 is unreleased), 
+        so with release="dr4" this will currently return no names for any ID. Defaults to DEFAULT_RELEASE.
 
     Returns:
         dict[int, str]: Maps each Gaia ID that SIMBAD has any name for to that name. IDs with no
@@ -316,9 +320,8 @@ def fetch_common_names(gaia_ids, batch_size=300, release="dr3"):
     # Fallback
     result = query_simbad_by_gaia_ids(gaia_ids, release, error_context="common name lookup")
     if result is not None:
-        for i, row in enumerate(result):
-            gid = gaia_ids[i] if i < len(gaia_ids) else None
-            if gid is not None and "main_id" in result.colnames and row["main_id"]:
+        for gid, row in zip(gaia_ids, result):
+            if "main_id" in result.colnames and row["main_id"]:
                 names[gid] = strip_name_prefix(row["main_id"])
 
     # Preferred
@@ -355,13 +358,13 @@ def fetch_common_names(gaia_ids, batch_size=300, release="dr3"):
 
     return names
 
-def fetch_mag_and_parallax(gaia_ids, mag_band="V", release="dr3"):
+def fetch_mag_and_parallax(gaia_ids, mag_band="V", release=DEFAULT_RELEASE):
     """Look up SIMBAD magnitude and parallax for one or more Gaia source IDs.
 
     Args:
         gaia_ids (list[int]): Gaia source ID(s).
         mag_band (str, optional): SIMBAD photometric band to fetch. Defaults to "V".
-        release (str, optional): Gaia data release the IDs belong to, "dr3" or "dr4". Defaults to "dr3".
+        release (str, optional): Gaia data release the IDs belong to. Defaults to DEFAULT_RELEASE.
 
     Returns:
         dict[int, dict]: Maps each Gaia ID to a dict with keys 'mag' and 'plx_value' (float or None if not available).
@@ -380,10 +383,7 @@ def fetch_mag_and_parallax(gaia_ids, mag_band="V", release="dr3"):
     if result is None:
         return results
 
-    for i, row in enumerate(result):
-        gid = gaia_ids[i] if i < len(gaia_ids) else None
-        if gid is None:
-            continue
+    for gid, row in zip(gaia_ids, result):
         try:
             for mag_col in (f"flux_{mag_band}", f"FLUX_{mag_band}", mag_band.lower(), mag_band.upper()):
                 if mag_col in result.colnames:
@@ -400,13 +400,13 @@ def fetch_mag_and_parallax(gaia_ids, mag_band="V", release="dr3"):
 
     return results
 
-def resolve_children_batch(child_names, batch_size=300, release="dr3"):
+def resolve_children_batch(child_names, batch_size=300, release=DEFAULT_RELEASE):
     """Resolve many SIMBAD names to Gaia IDs (plus common name/binaries) in batched queries.
 
     Args:
         child_names (list[str]): SIMBAD main_id names to resolve.
         batch_size (int, optional): Max number of names per batched SIMBAD query. Defaults to 300.
-        release (str, optional): Gaia data release to resolve IDs against, "dr3" or "dr4". Defaults to "dr3".
+        release (str, optional): Gaia data release to resolve IDs against. Defaults to DEFAULT_RELEASE.
 
     Returns:
         dict[str, dict]: Maps each input name to a dict with keys 'gaia_id' (int or None),
@@ -503,7 +503,7 @@ def resolve_parents_batch(child_names, batch_size=300):
 
     return results
 
-def sanity_check_star(gaia_ids, teff_tolerance=2000, release="dr3"):
+def sanity_check_star(gaia_ids, teff_tolerance=2000, release=DEFAULT_RELEASE):
     """Cross-check Gaia's own data against SIMBAD's spectral type, to flag possible mismatches.
 
     Compares Gaia's photometric temperature (teff_gspphot) against the temperature range implied
@@ -514,10 +514,9 @@ def sanity_check_star(gaia_ids, teff_tolerance=2000, release="dr3"):
         gaia_ids (int or list[int]): Gaia source ID(s) to check.
         teff_tolerance (float, optional): How many Kelvin Gaia's teff_gspphot can fall outside the
             spectral-type-implied range before being flagged. Defaults to 2000 K.
-        release (str, optional): Gaia data release to check against, "dr3" or "dr4". Note DR4's
-            astrophysical parameters table layout is still in draft (DR4 is unreleased), so the
-            table used for release="dr4" (ap_xp) is a best-effort guess and may need updating once
-            DR4's final data model is published. Defaults to "dr3".
+        release (str, optional): Gaia data release to check against. Note DR4's
+            astrophysical parameters table layout is still in draft, so the table used for release="dr4" (ap_xp) 
+            is a best-effort guess and may need updating once DR4's final data model is published. Defaults to DEFAULT_RELEASE.
 
     Returns:
         pandas.DataFrame: One row per ID, with a 'common_name' column plus Gaia and SIMBAD fields
@@ -559,10 +558,7 @@ def sanity_check_star(gaia_ids, teff_tolerance=2000, release="dr3"):
     result = query_simbad_by_gaia_ids(gaia_ids, release, error_context="SIMBAD lookup for sanity check")
 
     if result is not None:
-        for i, row in enumerate(result):
-            gid = gaia_ids[i] if i < len(gaia_ids) else None
-            if gid is None:
-                continue
+        for gid, row in zip(gaia_ids, result):
             try:
                 if "main_id" in result.colnames and row["main_id"]:
                     common_names[gid] = strip_name_prefix(row["main_id"])
@@ -611,7 +607,7 @@ def sanity_check_star(gaia_ids, teff_tolerance=2000, release="dr3"):
 
 def resolve_id(identifier, min_membership_certainty=80, center_ra=None, center_dec=None, radius_deg=None,
                mag_min=None, mag_max=None, mag_band="V", dist_min=None, dist_max=None,
-               release="dr3", plot=True, save_plot=False, plot_file_name=None, label_points=None,
+               release=DEFAULT_RELEASE, plot=True, save_plot=False, plot_file_name=None, label_points=None,
                sanity_check=False, save_csv=False, csv_file_name=None):
     """Convert a star or cluster identifier to its Gaia source ID(s), for the given data release.
 
@@ -630,7 +626,7 @@ def resolve_id(identifier, min_membership_certainty=80, center_ra=None, center_d
       missing data never excludes a child.
 
     The final result (including any unresolved children, with a blank Gaia ID) is shown as one
-    table, with unresolved names also listed separately for easy scanning.
+    table, with unresolved names listed separately.
 
     Args:
         identifier (int or str): Gaia source ID, or any SIMBAD recognized star or cluster name/identifier.
@@ -653,9 +649,10 @@ def resolve_id(identifier, min_membership_certainty=80, center_ra=None, center_d
             parallax (soft filter). Defaults to None (no lower cutoff).
         dist_max (float, optional): Farthest distance to include, in parsecs (soft filter).
             Defaults to None (no upper cutoff).
-        release (str, optional): Gaia data release to resolve against, "dr3" or "dr4". Note DR4 is
-            unreleased and SIMBAD has no Gaia DR4 cross-matches yet, so with release="dr4" a
-            non-numeric identifier (a star/cluster name) will currently fail to resolve. Defaults to "dr3".
+        release (str, optional): Gaia data release to resolve against. Note DR4 is
+            unreleased, so nothing can be cross-matched via SIMBAD yet: a non-numeric identifier
+            (a star/cluster name) will currently fail to resolve, and a numeric ID is accepted
+            as-is but isn't verified against real DR4 data until DR4 launches. Defaults to DEFAULT_RELEASE.
         plot (bool, optional): Whether to plot the resolved position(s). Defaults to True.
         save_plot (bool, optional): Whether to save the plot to an image file. Defaults to False.
         plot_file_name (str, optional): Name or path for the saved plot image. Defaults to None.
@@ -706,11 +703,6 @@ def resolve_id(identifier, min_membership_certainty=80, center_ra=None, center_d
                 print(f"Resolved: '{identifier}' ({common_name}) -> {designation_prefix} {gaia_id}")
             else:
                 print(f"Resolved: '{identifier}' -> {designation_prefix} {gaia_id}")
-        elif release == "dr4":
-            print(
-                f"Could not resolve '{identifier}'. Note: SIMBAD has no Gaia DR4 cross-matches yet "
-                "(DR4 is unreleased) - only numeric Gaia DR4 source IDs can be resolved for now."
-            )
 
     if gaia_id is not None:
         if binaries:
@@ -718,10 +710,10 @@ def resolve_id(identifier, min_membership_certainty=80, center_ra=None, center_d
 
         if plot:
             points = fetch_coordinates(gaia_id, release=release)
-            if common_name:
-                points = [(common_name, p_ra, p_dec) for _, p_ra, p_dec in points]
+            label = common_name if common_name else None
+            plot_points = [(label if label else pt_label, p_ra, p_dec) for _, pt_label, p_ra, p_dec in points]
             plot_positions(
-                points, title=f"Cross-match position for '{identifier}'",
+                plot_points, title=f"Cross-match position for '{identifier}'",
                 save_plot=save_plot, plot_file_name=plot_file_name, default_file_name=f"resolve_{gaia_id}",
             )
 
@@ -749,7 +741,10 @@ def resolve_id(identifier, min_membership_certainty=80, center_ra=None, center_d
     if children is None or len(children) == 0:
         note = ""
         if release == "dr4":
-            note = " Note: SIMBAD has no Gaia DR4 cross-matches yet (DR4 is unreleased)."
+            note = (
+                " Note: DR4 is unreleased, so nothing can be cross-matched via SIMBAD yet. "
+                "A numeric ID is accepted as-is, but isn't verified against real DR4 data until DR4 launches."
+            )
         print(f"Could not resolve '{identifier}'.{note}")
         return None
 
@@ -784,13 +779,13 @@ def resolve_id(identifier, min_membership_certainty=80, center_ra=None, center_d
             "binary_designations": "; ".join(binaries) if binaries else None,
         })
     df = pd.DataFrame(all_rows, columns=["name", "common_name", "gaia_id", "binary_designations"])
+    df["gaia_id"] = pd.array([row["gaia_id"] for row in all_rows], dtype="Int64")
 
     # Deduplicate by Gaia ID only among resolved rows, unresolved rows are always kept
     resolved_mask = df["gaia_id"].notna()
     resolved_before_dedup = int(resolved_mask.sum())
     unresolved_count = int((~resolved_mask).sum())
     resolved_part = df[resolved_mask].drop_duplicates(subset="gaia_id", keep="first")
-    resolved_part["gaia_id"] = resolved_part["gaia_id"].astype(int)
     df = pd.concat([resolved_part, df[~resolved_mask]], ignore_index=True)
 
     if df.empty:
@@ -816,10 +811,7 @@ def resolve_id(identifier, min_membership_certainty=80, center_ra=None, center_d
     if plot or want_radius_filter:
         resolved_ids_for_coords = df.loc[df["gaia_id"].notna(), "gaia_id"].astype(int).tolist()
         points = fetch_coordinates(resolved_ids_for_coords, release=release)
-        coord_map = {}
-        if points and len(points) == len(resolved_ids_for_coords):
-            for gid, (_, p_ra, p_dec) in zip(resolved_ids_for_coords, points):
-                coord_map[gid] = (p_ra, p_dec)
+        coord_map = {gid: (p_ra, p_dec) for gid, _, p_ra, p_dec in points}
         df["ra"] = df["gaia_id"].apply(lambda g: coord_map.get(int(g), (None, None))[0] if pd.notna(g) else None)
         df["dec"] = df["gaia_id"].apply(lambda g: coord_map.get(int(g), (None, None))[1] if pd.notna(g) else None)
 
@@ -884,7 +876,7 @@ def resolve_id(identifier, min_membership_certainty=80, center_ra=None, center_d
 
     return resolved_ids
 
-def query_by_adql(adql_query: str = None, identifier: int | str = None, release: str = "dr3", save_file: bool = False, file_name: str = None):
+def query_by_adql(adql_query: str = None, identifier: int | str = None, release: str = DEFAULT_RELEASE, save_file: bool = False, file_name: str = None):
     """Query Gaia with an ADQL query.
 
     If 'identifier' is given, it is resolved to a Gaia source ID (via resolve_id) and 
@@ -909,7 +901,7 @@ def query_by_adql(adql_query: str = None, identifier: int | str = None, release:
             insert into the query in place of '{source_id}'. Defaults to None.
         release (str, optional): Gaia data release to resolve 'identifier' against and to use for
             the auto-built default query, "dr3" or "dr4". Only used when 'identifier' is given.
-            A custom 'adql_query' already names its own table(s). Defaults to "dr3".
+            A custom 'adql_query' already names its own table(s). Defaults to DEFAULT_RELEASE.
         save_file (bool, optional): Whether to save the result to a CSV file. Defaults to False.
         file_name (str, optional): Name or path for the saved CSV file. Defaults to the resolved Gaia ID(s) 
             if an identifier was given, or to "gaia_query" otherwise.
@@ -942,7 +934,7 @@ def query_by_adql(adql_query: str = None, identifier: int | str = None, release:
 
         if adql_query is None:
             source_table = GAIA_RELEASE_TABLES[release]["source_table"]
-            adql_query = f"SELECT * FROM {source_table} WHERE source_id IN " + "({source_id})"
+            adql_query = f"SELECT * FROM {source_table} WHERE source_id IN ({{source_id}})"
         adql_query = adql_query.format(source_id=source_id_str)
 
     job = Gaia.launch_job(adql_query)
@@ -968,7 +960,7 @@ def find_star(
     mag_band: str = "phot_g_mean_mag",
     dist_min: float = None,
     dist_max: float = None,
-    release: str = "dr3",
+    release: str = DEFAULT_RELEASE,
     plot: bool = True,
     save_plot: bool = False,
     plot_file_name: str = None,
@@ -991,7 +983,8 @@ def find_star(
             a string `ra`. Defaults to None.
         coordinates (astropy.coordinates.SkyCoord, optional): Sky position to search around, used if `ra`/`dec` are 
             not given. Defaults to None.
-        degree_range (float, optional): Search radius in degrees. Defaults to 0.0001.
+        degree_range (float, optional): Search radius in degrees. Results are capped at the 10
+            closest sources to (ra, dec) within this radius. Defaults to 0.0001.
         columns (str, optional): Comma-separated columns to select from the release's source table. Defaults to '*' (all columns).
         mag_min (float, optional): Faintest magnitude to include (hard filter). Defaults to None (no lower cutoff).
         mag_max (float, optional): Brightest magnitude to include (hard filter). Defaults to None (no upper cutoff).
@@ -1000,9 +993,9 @@ def find_star(
             None (no lower cutoff).
         dist_max (float, optional): Farthest distance to include, in parsecs (soft filter). Defaults to
             None (no upper cutoff).
-        release (str, optional): Gaia data release to query, "dr3" or "dr4". Note SIMBAD has no
+        release (str, optional): Gaia data release to query. Note SIMBAD has no
             Gaia DR4 cross-matches yet (DR4 is unreleased), so with release="dr4" the returned
-            'common_name' column will currently be blank for every source. Defaults to "dr3".
+            'common_name' column will currently be blank for every source. Defaults to DEFAULT_RELEASE.
         plot (bool, optional): Whether to plot the found source(s). Defaults to True.
         save_plot (bool, optional): Whether to save the plot to an image file. Defaults to False.
         plot_file_name (str, optional): Name or path for the saved plot image. Defaults to None.
@@ -1013,9 +1006,10 @@ def find_star(
         csv_file_name (str, optional): Name for the saved CSV file. Defaults to "star_query".
 
     Returns:
-        pandas.DataFrame: Query results, with an added 'common_name' column from SIMBAD - a true
-        proper name (e.g. "Proxima Centauri") if one is on file, else SIMBAD's main identifier,
-        else blank if SIMBAD has no record of the source at all.
+        pandas.DataFrame: Query results (closest source first), with an added 'common_name' column
+        from SIMBAD (e.g. "Proxima Centauri") if one is on file, else SIMBAD's
+        main identifier, else blank if SIMBAD has no record of the source at all - and an
+        'ang_sep_deg' column giving each source's angular separation in degrees from (ra, dec).
 
     Raises:
         ValueError: If neither a valid ra/dec pair nor coordinates is given.
@@ -1041,12 +1035,13 @@ def find_star(
 
     source_table = GAIA_RELEASE_TABLES[release]["source_table"]
     query = f"""
-    SELECT TOP 10 {query_columns}
+    SELECT TOP 10 {query_columns}, DISTANCE(POINT('ICRS', ra, dec), POINT('ICRS', {ra}, {dec})) AS ang_sep_deg
     FROM {source_table}
     WHERE CONTAINS(
         POINT('ICRS', ra, dec),
         CIRCLE('ICRS', {ra}, {dec}, {degree_range})
     ) = 1{extra_filter}
+    ORDER BY ang_sep_deg ASC
     """
     if save_csv:
         df = query_by_adql(query, save_file=True, file_name=csv_file_name)
@@ -1132,18 +1127,18 @@ def find_cluster(
     save_csv: bool = False,
     csv_file_name: str = "cluster_query"
 ):
-    """Find clusters near a sky position, using SIMBAD,identified by their members.
+    """Find clusters near a sky position, using SIMBAD, identified by their members.
 
-    Distance filtering is a soft filter
+    Distance filtering is a soft filter.
 
     min_membership_certainty, if set, only counts a member if its SIMBAD confidence score meets
-    that bar; a member with no score does NOT count. Off by default.
+    that bar; a member with no score does NOT count.
 
     Args:
         ra (str or float, optional): Right ascension, as a sexagesimal string (e.g. "10h21m00s") when paired
             with a string `dec`. Defaults to None.
         dec (str or float, optional): Declination, as a sexagesimal string (e.g. "+41d05m00s") when paired
-            with a string `ra`. Defaults to None.
+            with a string `dec`. Defaults to None.
         coordinates (astropy.coordinates.SkyCoord, optional): Sky position to search around, used if `ra`/`dec`
             are not given. Defaults to None.
         search_radius_deg (float, optional): Search radius in degrees. Defaults to 2.0.
@@ -1321,7 +1316,7 @@ def query_by_datalink(
     gaia_ids: int | list[int],
     retrieval: str = 'EPOCH_PHOTOMETRY',
     structure: str = 'INDIVIDUAL',
-    release: str = 'dr3',
+    release: str = DEFAULT_RELEASE,
     save_file: bool = False,
     folder_name: str = None
 ):
@@ -1335,10 +1330,10 @@ def query_by_datalink(
             (resolved automatically) of the target(s) of the query.
         retrieval (str, optional): Retrieval type. Defaults to 'EPOCH_PHOTOMETRY'.
         structure (str, optional): Data structure. Defaults to 'INDIVIDUAL'.
-        release (str, optional): Gaia data release, "dr3" or "dr4". Note DR4 is unreleased and
-            SIMBAD has no Gaia DR4 cross-matches yet, so with release="dr4" any non-numeric
-            identifier (a star/cluster name) will currently fail to resolve - only numeric Gaia
-            DR4 source IDs can be resolved for now. Defaults to "dr3".
+        release (str, optional): Gaia data release. Note DR4 is unreleased, so
+            nothing can be cross-matched via SIMBAD yet: any non-numeric identifier (a star/cluster
+            name) will currently fail to resolve, and a numeric ID is accepted as-is but isn't
+            verified against real DR4 data until DR4 launches. Defaults to DEFAULT_RELEASE.
         save_file (bool, optional): Whether to save each result to a CSV file. Defaults to False.
         folder_name (str, optional): Folder to save CSV files into. Required if save_file is True. Defaults to None.
 
@@ -1356,8 +1351,8 @@ def query_by_datalink(
 
     if release == "dr4" and any(not str(gid).strip().isdigit() for gid in gaia_ids):
         print(
-            "Note: SIMBAD has no Gaia DR4 cross-matches yet (DR4 is unreleased) - "
-            "only numeric Gaia DR4 source IDs can be resolved for now."
+            "Note: DR4 is unreleased, so nothing can be cross-matched via SIMBAD yet. "
+            "A numeric ID is accepted as-is, but isn't verified against real DR4 data until DR4 launches."
         )
 
     # resolve_id may return a single int (direct match) or a list[int]

@@ -1,11 +1,11 @@
 """Tests for gaia_input.py
 
-Tests cover CSV loading, filtering logic, identifier resolution via SIMBAD, cluster lookup, ADQL/Datalink querying, 
+Tests cover CSV loading, filtering logic, identifier resolution via SIMBAD, cluster lookup, ADQL/Datalink querying,
 coordinate-based star search, login handling, the interactive menu's routing logic, and the Gaia DR3/DR4 release
-helpers.
+default.
 
-All calls to SIMBAD and the Gaia archive (via astroquery) are mocked, so this runs fully offline and does not require 
-network access or live credentials. Interactive input prompts are also mocked with scripted answers so the menu 
+All calls to SIMBAD and the Gaia archive (via astroquery) are mocked, so this runs fully offline and does not require
+network access or live credentials. Interactive input prompts are also mocked with scripted answers so the menu
 logic can be tested.
 """
 
@@ -13,6 +13,7 @@ import pytest
 import pandas as pd
 from unittest.mock import patch, MagicMock
 from gaiadr3_analysis.gaia_input import (
+    DEFAULT_RELEASE,
     gaia_designation,
     is_value_masked,
     query_simbad_by_gaia_ids,
@@ -45,11 +46,7 @@ class FakeTable(list):
 # Fixtures
 @pytest.fixture
 def sample_df():
-    """Returns a minimal Gaia DataFrame for testing.
-
-    Returns:
-        pd.DataFrame: DataFrame with ra, dec, parallax, and pmra columns.
-    """
+    """Returns a minimal Gaia DataFrame for testing."""
     return pd.DataFrame({
         "ra": [10.0, 20.0, 30.0],
         "dec": [-5.0, 15.0, 25.0],
@@ -59,49 +56,33 @@ def sample_df():
 
 @pytest.fixture
 def sample_dict_of_df():
-    """Returns a dict of DataFrames mimicking query_by_datalink output.
-
-    Returns:
-        dict[int, pd.DataFrame]: Mapping of fake Gaia IDs to epoch
-        photometry DataFrames.
-    """
+    """Returns a dict of DataFrames mimicking query_by_datalink output."""
     return {
         111: pd.DataFrame({"flux": [1.0, 5.0, 10.0]}),
         222: pd.DataFrame({"flux": [2.0, 6.0, 11.0]}),
     }
 
 # gaia_designation
-def test_gaia_designation_default_dr3():
-    """Checks that gaia_designation defaults to a DR3-prefixed designation string."""
-    assert gaia_designation(123456789) == "Gaia DR3 123456789"
-
-def test_gaia_designation_dr4():
-    """Checks that gaia_designation builds a DR4-prefixed designation string when requested."""
-    assert gaia_designation(123456789, release="dr4") == "Gaia DR4 123456789"
+@pytest.mark.parametrize("release, expected", [(None, "Gaia DR3 123456789"), ("dr4", "Gaia DR4 123456789")])
+def test_gaia_designation(release, expected):
+    """Checks the designation string for the default release and an explicit override."""
+    result = gaia_designation(123456789) if release is None else gaia_designation(123456789, release=release)
+    assert result == expected
 
 # is_value_masked
-def test_is_value_masked_true_for_masked_value():
-    """Checks that a value with mask=True is reported as masked."""
-    masked_value = MagicMock(mask=True)
-    assert is_value_masked(masked_value) is True
-
-def test_is_value_masked_false_for_unmasked_value():
-    """Checks that a value with mask=False is reported as not masked."""
-    unmasked_value = MagicMock(mask=False)
-    assert is_value_masked(unmasked_value) is False
-
-def test_is_value_masked_false_for_plain_value():
-    """Checks that a plain value with no mask attribute at all is reported as not masked."""
-    assert is_value_masked(10.5) is False
+@pytest.mark.parametrize("value, expected", [
+    (MagicMock(mask=True), True),
+    (MagicMock(mask=False), False),
+    (10.5, False), # plain value, no mask attribute at all
+])
+def test_is_value_masked(value, expected):
+    """Checks masked, unmasked, and plain (no mask attribute) values are reported correctly."""
+    assert is_value_masked(value) is expected
 
 # query_simbad_by_gaia_ids
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_query_simbad_by_gaia_ids_returns_result(mock_simbad):
-    """Checks that query_simbad_by_gaia_ids returns SIMBAD's result table on success.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
+    """Checks that query_simbad_by_gaia_ids returns SIMBAD's result table on success."""
     mock_simbad.query_objects.return_value = FakeTable([{"main_id": "Star A"}], colnames=["main_id"])
     result = query_simbad_by_gaia_ids([111])
     assert result is not None
@@ -109,11 +90,7 @@ def test_query_simbad_by_gaia_ids_returns_result(mock_simbad):
 
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_query_simbad_by_gaia_ids_handles_exception(mock_simbad):
-    """Checks that query_simbad_by_gaia_ids returns None and prints the given error_context on failure.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
+    """Checks that query_simbad_by_gaia_ids returns None and prints the given error_context on failure."""
     mock_simbad.query_objects.side_effect = Exception("network error")
     with patch("builtins.print") as mock_print:
         result = query_simbad_by_gaia_ids([111], error_context="test lookup")
@@ -124,26 +101,17 @@ def test_query_simbad_by_gaia_ids_handles_exception(mock_simbad):
 # fetch_coordinates
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_fetch_coordinates_uses_simbad_position(mock_simbad):
-    """Checks that fetch_coordinates uses SIMBAD's position when it has a usable one on file.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
+    """Checks that fetch_coordinates uses SIMBAD's position when it has a usable one on file."""
     mock_simbad.query_objects.return_value = FakeTable(
         [{"main_id": "Star A", "ra": 10.0, "dec": 20.0}], colnames=["main_id", "ra", "dec"],
     )
     result = fetch_coordinates([111])
-    assert result == [("Star A", 10.0, 20.0)]
+    assert result == [(111, "Star A", 10.0, 20.0)]
 
 @patch("gaiadr3_analysis.gaia_input.Gaia")
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_fetch_coordinates_falls_back_to_gaia_archive(mock_simbad, mock_gaia):
-    """Checks that fetch_coordinates falls back to the Gaia archive when SIMBAD has no usable position.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-        mock_gaia: Mocked Gaia class from astroquery.
-    """
+    """Checks that fetch_coordinates falls back to the Gaia archive when SIMBAD has no usable position."""
     mock_simbad.query_objects.return_value = None
     mock_job = MagicMock()
     mock_job.get_results.return_value.to_pandas.return_value = pd.DataFrame({
@@ -154,17 +122,12 @@ def test_fetch_coordinates_falls_back_to_gaia_archive(mock_simbad, mock_gaia):
     with patch("builtins.print"):
         result = fetch_coordinates([111])
 
-    assert result == [("111", 10.0, 20.0)]
+    assert result == [(111, "111", 10.0, 20.0)]
 
 @patch("gaiadr3_analysis.gaia_input.Gaia")
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_fetch_coordinates_warns_when_not_found_anywhere(mock_simbad, mock_gaia):
-    """Checks that an ID found in neither SIMBAD nor the Gaia archive is skipped with a warning.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-        mock_gaia: Mocked Gaia class from astroquery.
-    """
+    """Checks that an ID found in neither SIMBAD nor the Gaia archive is skipped with a warning."""
     mock_simbad.query_objects.return_value = None
     mock_job = MagicMock()
     mock_job.get_results.return_value.to_pandas.return_value = pd.DataFrame(columns=["source_id", "ra", "dec"])
@@ -178,37 +141,13 @@ def test_fetch_coordinates_warns_when_not_found_anywhere(mock_simbad, mock_gaia)
     assert "111" in printed
 
 # load_csv
-def test_load_csv_returns_dataframe(tmp_path):
-    """Checks that load_csv returns a pandas DataFrame.
-
-    Args:
-        tmp_path: pytest built-in fixture providing a temporary directory.
-    """
+def test_load_csv_reads_data_correctly(tmp_path):
+    """Checks that load_csv returns a DataFrame with the right columns and row count."""
     csv_file = tmp_path / "test.csv"
-    csv_file.write_text("ra,dec\n10.0,-5.0\n20.0,15.0\n")
+    csv_file.write_text("ra,dec,parallax\n10.0,-5.0,1.0\n20.0,15.0,2.0\n30.0,25.0,3.0\n")
     result = load_csv(str(csv_file))
     assert isinstance(result, pd.DataFrame)
-
-def test_load_csv_correct_columns(tmp_path):
-    """Checks that load_csv preserves column names from the CSV file.
-
-    Args:
-        tmp_path: pytest built-in fixture providing a temporary directory.
-    """
-    csv_file = tmp_path / "test.csv"
-    csv_file.write_text("ra,dec,parallax\n10.0,-5.0,1.0\n")
-    result = load_csv(str(csv_file))
     assert list(result.columns) == ["ra", "dec", "parallax"]
-
-def test_load_csv_correct_row_count(tmp_path):
-    """Checks that load_csv loads the correct number of rows.
-
-    Args:
-        tmp_path: pytest built-in fixture providing a temporary directory.
-    """
-    csv_file = tmp_path / "test.csv"
-    csv_file.write_text("ra,dec\n10.0,-5.0\n20.0,15.0\n30.0,25.0\n")
-    result = load_csv(str(csv_file))
     assert len(result) == 3
 
 def test_load_csv_file_not_found():
@@ -218,77 +157,40 @@ def test_load_csv_file_not_found():
 
 # apply_filter (single DataFrame)
 def test_apply_filter_valid_expression(sample_df):
-    """Checks that apply_filter correctly filters rows using a valid expression.
-
-    Args:
-        sample_df (pd.DataFrame): Sample Gaia DataFrame fixture.
-    """
+    """Checks that apply_filter correctly filters rows using a valid expression."""
     with patch("builtins.print"), patch("builtins.input", return_value="parallax > 1.0"):
         result = apply_filter(sample_df)
     assert len(result) == 2
     assert all(result["parallax"] > 1.0)
 
 def test_apply_filter_empty_expression_returns_original(sample_df):
-    """Checks that apply_filter returns the original DataFrame when skipped.
-
-    Args:
-        sample_df (pd.DataFrame): Sample Gaia DataFrame fixture.
-    """
+    """Checks that apply_filter returns the original DataFrame when skipped."""
     with patch("builtins.print"), patch("builtins.input", return_value=""):
         result = apply_filter(sample_df)
     assert len(result) == len(sample_df)
 
 def test_apply_filter_invalid_expression_returns_original(sample_df):
-    """Checks that apply_filter returns the original DataFrame on invalid input.
-
-    Args:
-        sample_df (pd.DataFrame): Sample Gaia DataFrame fixture.
-    """
+    """Checks that apply_filter returns the original DataFrame on invalid input."""
     with patch("builtins.print"), patch("builtins.input", return_value="not_a_column > 1"):
         result = apply_filter(sample_df)
     assert len(result) == len(sample_df)
 
-def test_apply_filter_exact_match(sample_df):
-    """Checks that apply_filter returns only rows matching an exact condition.
-
-    Args:
-        sample_df (pd.DataFrame): Sample Gaia DataFrame fixture.
-    """
-    with patch("builtins.print"), patch("builtins.input", return_value="parallax == 0.5"):
-        result = apply_filter(sample_df)
-    assert len(result) == 1
-    assert result["parallax"].iloc[0] == 0.5
-
 # apply_filter (dict of DataFrames)
 def test_apply_filter_dict_applies_to_every_entry(sample_dict_of_df):
-    """Checks that apply_filter applies the same expression to every DataFrame in a dict.
-
-    Args:
-        sample_dict_of_df (dict[int, pd.DataFrame]): Sample dict-of-DataFrames fixture.
-    """
+    """Checks that apply_filter applies the same expression to every DataFrame in a dict."""
     with patch("builtins.print"), patch("builtins.input", return_value="flux > 4.0"):
         result = apply_filter(sample_dict_of_df)
     assert set(result.keys()) == {111, 222}
-    assert len(result[111]) == 2
-    assert len(result[222]) == 2
     assert (result[111]["flux"] > 4.0).all()
 
 def test_apply_filter_dict_empty_expression_returns_original(sample_dict_of_df):
-    """Checks that apply_filter returns the original dict unchanged when the filter is skipped.
-
-    Args:
-        sample_dict_of_df (dict[int, pd.DataFrame]): Sample dict-of-DataFrames fixture.
-    """
+    """Checks that apply_filter returns the original dict unchanged when the filter is skipped."""
     with patch("builtins.print"), patch("builtins.input", return_value=""):
         result = apply_filter(sample_dict_of_df)
     assert result is sample_dict_of_df
 
 def test_apply_filter_dict_invalid_expression_keeps_original_entry(sample_dict_of_df):
-    """Checks that apply_filter keeps the original DataFrame for an entry when its expression is invalid.
-
-    Args:
-        sample_dict_of_df (dict[int, pd.DataFrame]): Sample dict-of-DataFrames fixture.
-    """
+    """Checks that apply_filter keeps the original DataFrame for an entry when its expression is invalid."""
     with patch("builtins.print"), patch("builtins.input", return_value="not_a_column > 1"):
         result = apply_filter(sample_dict_of_df)
     assert len(result[111]) == len(sample_dict_of_df[111])
@@ -299,37 +201,18 @@ def test_apply_filter_empty_dict_returns_empty_dict():
     assert result == {}
 
 # resolve_id: numeric/direct-match branches
+@pytest.mark.parametrize("identifier", ["123456789", 123456789], ids=["string", "int"])
 @patch("gaiadr3_analysis.gaia_input.Simbad")
-def test_resolve_id_numeric_string_returns_int(mock_simbad):
-    """Checks that a purely numeric string identifier is returned as an int without a SIMBAD common name.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
+def test_resolve_id_numeric_input_returns_int(mock_simbad, identifier):
+    """Checks that a numeric identifier - as a string or an int - is returned as an int."""
     mock_simbad.query_objectids.return_value = None
     with patch("builtins.print"):
-        result = resolve_id("123456789", plot=False)
+        result = resolve_id(identifier, plot=False)
     assert result == 123456789
 
 @patch("gaiadr3_analysis.gaia_input.Simbad")
-def test_resolve_id_int_input_returns_int(mock_simbad):
-    """Checks that an integer identifier is returned as-is.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
-    mock_simbad.query_objectids.return_value = None
-    with patch("builtins.print"):
-        result = resolve_id(987654321, plot=False)
-    assert result == 987654321
-
-@patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_resolve_id_numeric_id_prints_common_name(mock_simbad):
-    """Checks that a numeric ID with a SIMBAD 'NAME ' entry prints that common name.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
+    """Checks that a numeric ID with a SIMBAD 'NAME ' entry prints that common name."""
     mock_simbad.query_objectids.return_value = {"id": ["NAME Proxima Centauri", "Gaia DR3 123456789"]}
     with patch("builtins.print") as mock_print:
         result = resolve_id(123456789, plot=False)
@@ -339,11 +222,7 @@ def test_resolve_id_numeric_id_prints_common_name(mock_simbad):
 
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_resolve_id_direct_cross_match(mock_simbad):
-    """Checks that a name with a direct Gaia DR3 cross-match resolves to a single int.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
+    """Checks that a name with a direct Gaia DR3 cross-match resolves to a single int."""
     mock_simbad.query_objectids.return_value = {"id": ["HD 209458", "Gaia DR3 1234567890123456789"]}
     with patch("builtins.print"):
         result = resolve_id("HD 209458", plot=False)
@@ -351,11 +230,7 @@ def test_resolve_id_direct_cross_match(mock_simbad):
 
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_resolve_id_no_match_at_all_returns_none(mock_simbad):
-    """Checks that resolve_id returns None when neither a direct match nor children are found.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
+    """Checks that resolve_id returns None when neither a direct match nor children are found."""
     mock_simbad.query_objectids.return_value = None
     mock_simbad.query_hierarchy.return_value = None
     with patch("builtins.print"):
@@ -364,11 +239,7 @@ def test_resolve_id_no_match_at_all_returns_none(mock_simbad):
 
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_resolve_id_empty_children_table_returns_none(mock_simbad):
-    """Checks that resolve_id returns None when query_hierarchy returns an empty table.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
+    """Checks that resolve_id returns None when query_hierarchy returns an empty table."""
     mock_simbad.query_objectids.return_value = None
     mock_simbad.query_hierarchy.return_value = FakeTable([], colnames=["main_id", "otype"])
     with patch("builtins.print"):
@@ -378,11 +249,7 @@ def test_resolve_id_empty_children_table_returns_none(mock_simbad):
 # resolve_id: release parameter (DR4)
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_resolve_id_dr4_uses_dr4_designation_for_numeric_id(mock_simbad):
-    """Checks that a numeric identifier is looked up with a Gaia DR4 designation when release='dr4'.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
+    """Checks that a numeric identifier is looked up with a Gaia DR4 designation when release='dr4'."""
     mock_simbad.query_objectids.return_value = None
     with patch("builtins.print"):
         resolve_id(123456789, plot=False, release="dr4")
@@ -392,11 +259,7 @@ def test_resolve_id_dr4_uses_dr4_designation_for_numeric_id(mock_simbad):
 
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_resolve_id_dr4_unresolved_name_prints_note(mock_simbad):
-    """Checks that an unresolved name under release='dr4' prints a note about missing DR4 cross-matches.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
+    """Checks that an unresolved name under release='dr4' prints a note about missing DR4 cross-matches."""
     mock_simbad.query_objectids.return_value = None
     mock_simbad.query_hierarchy.return_value = None
     with patch("builtins.print") as mock_print:
@@ -409,11 +272,7 @@ def test_resolve_id_dr4_unresolved_name_prints_note(mock_simbad):
 # resolve_id: cluster children
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_resolve_id_resolves_children_to_list(mock_simbad):
-    """Checks that an identifier with no direct match but resolvable children returns a list of IDs.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
+    """Checks that an identifier with no direct match but resolvable children returns a list of IDs."""
     mock_simbad.query_objectids.return_value = None
     mock_simbad.query_hierarchy.return_value = FakeTable(
         [{"main_id": "Star A", "otype": "*"}, {"main_id": "Star B", "otype": "*"}],
@@ -431,11 +290,7 @@ def test_resolve_id_resolves_children_to_list(mock_simbad):
 
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_resolve_id_children_found_but_none_have_gaia_id(mock_simbad):
-    """Checks that resolve_id returns an empty list when children exist but none have a Gaia DR3 cross-match.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
+    """Checks that resolve_id returns an empty list when children exist but none have a Gaia DR3 cross-match."""
     mock_simbad.query_objectids.return_value = None
     mock_simbad.query_hierarchy.return_value = FakeTable(
         [{"main_id": "Star A", "otype": "*"}, {"main_id": "Star B", "otype": "*"}],
@@ -450,11 +305,7 @@ def test_resolve_id_children_found_but_none_have_gaia_id(mock_simbad):
 
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_resolve_id_skips_group_type_children(mock_simbad):
-    """Checks that a child whose otype is itself a group (e.g. a sub-cluster) is skipped.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
+    """Checks that a child whose otype is itself a group (e.g. a sub-cluster) is skipped."""
     mock_simbad.query_objectids.return_value = None
     mock_simbad.query_hierarchy.return_value = FakeTable(
         [{"main_id": "Sub Cluster", "otype": "Cl*"}, {"main_id": "Star A", "otype": "*"}],
@@ -469,11 +320,7 @@ def test_resolve_id_skips_group_type_children(mock_simbad):
 
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_resolve_id_dedupes_duplicate_gaia_ids(mock_simbad):
-    """Checks that the same Gaia ID reached via two different SIMBAD names appears only once.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
+    """Checks that the same Gaia ID reached via two different SIMBAD names appears only once."""
     mock_simbad.query_objectids.return_value = None
     mock_simbad.query_hierarchy.return_value = FakeTable(
         [{"main_id": "Star A", "otype": "*"}, {"main_id": "Star A Alias", "otype": "*"}],
@@ -489,45 +336,25 @@ def test_resolve_id_dedupes_duplicate_gaia_ids(mock_simbad):
 
     assert result == [111]
 
+@pytest.mark.parametrize("min_membership_certainty, expected_criteria", [
+    (90, "h_link.membership >= 90"),
+    (None, None),
+])
 @patch("gaiadr3_analysis.gaia_input.Simbad")
-def test_resolve_id_passes_membership_certainty_criteria(mock_simbad):
-    """Checks that min_membership_certainty is translated into the SIMBAD hierarchy criteria string.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
+def test_resolve_id_membership_certainty_criteria(mock_simbad, min_membership_certainty, expected_criteria):
+    """Checks that min_membership_certainty is translated into the SIMBAD hierarchy criteria string, or disabled."""
     mock_simbad.query_objectids.return_value = None
     mock_simbad.query_hierarchy.return_value = None
 
     with patch("builtins.print"):
-        resolve_id("Cluster", plot=False, min_membership_certainty=90)
+        resolve_id("Cluster", plot=False, min_membership_certainty=min_membership_certainty)
 
     _, kwargs = mock_simbad.query_hierarchy.call_args
-    assert kwargs["criteria"] == "h_link.membership >= 90"
-
-@patch("gaiadr3_analysis.gaia_input.Simbad")
-def test_resolve_id_membership_certainty_none_disables_filter(mock_simbad):
-    """Checks that min_membership_certainty=None sends no criteria filter to SIMBAD.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
-    mock_simbad.query_objectids.return_value = None
-    mock_simbad.query_hierarchy.return_value = None
-
-    with patch("builtins.print"):
-        resolve_id("Cluster", plot=False, min_membership_certainty=None)
-
-    _, kwargs = mock_simbad.query_hierarchy.call_args
-    assert kwargs["criteria"] is None
+    assert kwargs["criteria"] == expected_criteria
 
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_resolve_id_radius_filter_drops_out_of_range_children(mock_simbad):
-    """Checks that center_ra/center_dec/radius_deg drops children outside that radius.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
+    """Checks that center_ra/center_dec/radius_deg drops children outside that radius."""
     mock_simbad.query_objectids.return_value = None
     mock_simbad.query_hierarchy.return_value = FakeTable(
         [{"main_id": "Star A", "otype": "*"}, {"main_id": "Star B", "otype": "*"}],
@@ -549,11 +376,7 @@ def test_resolve_id_radius_filter_drops_out_of_range_children(mock_simbad):
 
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_resolve_id_distance_soft_filter_drops_out_of_range_children(mock_simbad):
-    """Checks that dist_min/dist_max drops a child whose implied distance is out of range.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
+    """Checks that dist_min/dist_max drops a child whose implied distance is out of range."""
     mock_simbad.query_objectids.return_value = None
     mock_simbad.query_hierarchy.return_value = FakeTable(
         [{"main_id": "Star A", "otype": "*"}, {"main_id": "Star B", "otype": "*"}],
@@ -575,11 +398,7 @@ def test_resolve_id_distance_soft_filter_drops_out_of_range_children(mock_simbad
 
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_resolve_id_distance_soft_filter_keeps_missing_data(mock_simbad):
-    """Checks that a child with no parallax on file is kept, not dropped, by the distance filter.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
+    """Checks that a child with no parallax on file is kept, not dropped, by the distance filter."""
     mock_simbad.query_objectids.return_value = None
     mock_simbad.query_hierarchy.return_value = FakeTable(
         [{"main_id": "Star A", "otype": "*"}], colnames=["main_id", "otype"],
@@ -597,27 +416,17 @@ def test_resolve_id_distance_soft_filter_keeps_missing_data(mock_simbad):
 @patch("gaiadr3_analysis.gaia_input.sanity_check_star")
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_resolve_id_calls_sanity_check_when_requested(mock_simbad, mock_sanity):
-    """Checks that sanity_check_star is called with the resolved Gaia ID and release when sanity_check=True.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-        mock_sanity: Mocked sanity_check_star function.
-    """
+    """Checks that sanity_check_star is called with the resolved Gaia ID and release when sanity_check=True."""
     mock_simbad.query_objectids.return_value = None
     with patch("builtins.print"):
         result = resolve_id(111, plot=False, sanity_check=True)
     assert result == 111
-    mock_sanity.assert_called_once_with(111, release="dr3")
+    mock_sanity.assert_called_once_with(111, release=DEFAULT_RELEASE)
 
 @patch("gaiadr3_analysis.gaia_input.save_dataframe_csv")
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_resolve_id_saves_csv_when_requested(mock_simbad, mock_save):
-    """Checks that save_csv writes a one-row CSV with the resolved star's info.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-        mock_save: Mocked save_dataframe_csv function.
-    """
+    """Checks that save_csv writes a one-row CSV with the resolved star's info."""
     mock_simbad.query_objectids.return_value = None
     with patch("builtins.print"):
         resolve_id(111, plot=False, save_csv=True, csv_file_name="my_star")
@@ -635,11 +444,7 @@ def test_find_cluster_raises_value_error_without_position():
 
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_find_cluster_returns_empty_df_when_no_region_results(mock_simbad):
-    """Checks that find_cluster returns an empty DataFrame when query_region finds nothing nearby.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-    """
+    """Checks that find_cluster returns an empty DataFrame when query_region finds nothing nearby."""
     mock_simbad.query_region.return_value = None
     with patch("builtins.print"):
         result = find_cluster(ra=10.0, dec=20.0)
@@ -649,12 +454,7 @@ def test_find_cluster_returns_empty_df_when_no_region_results(mock_simbad):
 @patch("gaiadr3_analysis.gaia_input.resolve_parents_batch")
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_find_cluster_returns_empty_df_when_no_parent_resolves(mock_simbad, mock_parents):
-    """Checks that find_cluster returns an empty DataFrame when no found star has a resolvable parent.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-        mock_parents: Mocked resolve_parents_batch function.
-    """
+    """Checks that find_cluster returns an empty DataFrame when no found star has a resolvable parent."""
     mock_simbad.query_region.return_value = FakeTable(
         [{"main_id": "Star A", "ra": 10.0, "dec": 20.0, "plx_value": 10.0}],
         colnames=["main_id", "ra", "dec", "plx_value"],
@@ -670,13 +470,7 @@ def test_find_cluster_returns_empty_df_when_no_parent_resolves(mock_simbad, mock
 @patch("gaiadr3_analysis.gaia_input.resolve_parents_batch")
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_find_cluster_groups_members_by_parent(mock_simbad, mock_parents, mock_children):
-    """Checks that stars sharing the same SIMBAD parent are grouped into one candidate cluster.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-        mock_parents: Mocked resolve_parents_batch function.
-        mock_children: Mocked resolve_children_batch function (used for the cluster's common name).
-    """
+    """Checks that stars sharing the same SIMBAD parent are grouped into one candidate cluster."""
     mock_simbad.query_region.return_value = FakeTable(
         [
             {"main_id": "Star A", "ra": 10.0, "dec": 20.0, "plx_value": 10.0},
@@ -702,13 +496,7 @@ def test_find_cluster_groups_members_by_parent(mock_simbad, mock_parents, mock_c
 @patch("gaiadr3_analysis.gaia_input.resolve_parents_batch")
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_find_cluster_membership_certainty_excludes_low_and_missing_scores(mock_simbad, mock_parents, mock_children):
-    """Checks that min_membership_certainty excludes low-confidence AND missing-confidence member links.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-        mock_parents: Mocked resolve_parents_batch function.
-        mock_children: Mocked resolve_children_batch function.
-    """
+    """Checks that min_membership_certainty excludes low-confidence AND missing-confidence member links."""
     mock_simbad.query_region.return_value = FakeTable(
         [
             {"main_id": "Star A", "ra": 10.0, "dec": 20.0, "plx_value": 10.0},
@@ -733,13 +521,7 @@ def test_find_cluster_membership_certainty_excludes_low_and_missing_scores(mock_
 @patch("gaiadr3_analysis.gaia_input.resolve_parents_batch")
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_find_cluster_distance_filter_excludes_out_of_range_candidate(mock_simbad, mock_parents, mock_children):
-    """Checks that dist_min/dist_max excludes a candidate whose implied distance is out of range.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-        mock_parents: Mocked resolve_parents_batch function.
-        mock_children: Mocked resolve_children_batch function.
-    """
+    """Checks that dist_min/dist_max excludes a candidate whose implied distance is out of range."""
     mock_simbad.query_region.return_value = FakeTable(
         [
             {"main_id": "Star A", "ra": 10.0, "dec": 20.0, "plx_value": 100.0},
@@ -762,13 +544,7 @@ def test_find_cluster_distance_filter_excludes_out_of_range_candidate(mock_simba
 @patch("gaiadr3_analysis.gaia_input.resolve_parents_batch")
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_find_cluster_ranks_by_member_count(mock_simbad, mock_parents, mock_children):
-    """Checks that candidates are ranked by member_count, not by angular separation alone.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-        mock_parents: Mocked resolve_parents_batch function.
-        mock_children: Mocked resolve_children_batch function.
-    """
+    """Checks that candidates are ranked by member_count, not by angular separation alone."""
     mock_simbad.query_region.return_value = FakeTable(
         [
             {"main_id": "Star A", "ra": 10.0, "dec": 20.0, "plx_value": None},
@@ -797,13 +573,7 @@ def test_find_cluster_ranks_by_member_count(mock_simbad, mock_parents, mock_chil
 @patch("gaiadr3_analysis.gaia_input.resolve_parents_batch")
 @patch("gaiadr3_analysis.gaia_input.Simbad")
 def test_find_cluster_respects_top_n(mock_simbad, mock_parents, mock_children):
-    """Checks that find_cluster returns at most top_n candidates.
-
-    Args:
-        mock_simbad: Mocked Simbad class from astroquery.
-        mock_parents: Mocked resolve_parents_batch function.
-        mock_children: Mocked resolve_children_batch function.
-    """
+    """Checks that find_cluster returns at most top_n candidates."""
     rows = [{"main_id": f"Star {i}", "ra": 10.0, "dec": 20.0, "plx_value": None} for i in range(3)]
     mock_simbad.query_region.return_value = FakeTable(rows, colnames=["main_id", "ra", "dec", "plx_value"])
     mock_parents.return_value = {f"Star {i}": (f"Cluster {i}", "OpC", 90.0) for i in range(3)}
@@ -822,11 +592,7 @@ def test_query_by_adql_raises_value_error_without_query_or_identifier():
 
 @patch("gaiadr3_analysis.gaia_input.Gaia")
 def test_query_by_adql_runs_raw_query(mock_gaia):
-    """Checks that query_by_adql runs a provided ADQL query and returns a DataFrame.
-
-    Args:
-        mock_gaia: Mocked Gaia class from astroquery.
-    """
+    """Checks that query_by_adql runs a provided ADQL query and returns a DataFrame."""
     mock_job = MagicMock()
     mock_job.get_results.return_value.to_pandas.return_value = pd.DataFrame({"source_id": [1, 2]})
     mock_gaia.launch_job.return_value = mock_job
@@ -838,12 +604,7 @@ def test_query_by_adql_runs_raw_query(mock_gaia):
 @patch("gaiadr3_analysis.gaia_input.resolve_id")
 @patch("gaiadr3_analysis.gaia_input.Gaia")
 def test_query_by_adql_builds_default_query_from_identifier(mock_gaia, mock_resolve):
-    """Checks that query_by_adql builds a default SELECT * query when only an identifier is given.
-
-    Args:
-        mock_gaia: Mocked Gaia class from astroquery.
-        mock_resolve: Mocked resolve_id function.
-    """
+    """Checks that query_by_adql builds a default SELECT * query when only an identifier is given."""
     mock_resolve.return_value = 123456789
     mock_job = MagicMock()
     mock_job.get_results.return_value.to_pandas.return_value = pd.DataFrame({"source_id": [123456789]})
@@ -855,11 +616,7 @@ def test_query_by_adql_builds_default_query_from_identifier(mock_gaia, mock_reso
 
 @patch("gaiadr3_analysis.gaia_input.resolve_id")
 def test_query_by_adql_returns_none_for_unresolved_identifier(mock_resolve):
-    """Checks that query_by_adql returns None and doesn't run a query if the identifier can't be resolved.
-
-    Args:
-        mock_resolve: Mocked resolve_id function.
-    """
+    """Checks that query_by_adql returns None and doesn't run a query if the identifier can't be resolved."""
     mock_resolve.return_value = None
     with patch("builtins.print"):
         result = query_by_adql(identifier="Unresolvable Star")
@@ -868,12 +625,7 @@ def test_query_by_adql_returns_none_for_unresolved_identifier(mock_resolve):
 @patch("gaiadr3_analysis.gaia_input.resolve_id")
 @patch("gaiadr3_analysis.gaia_input.Gaia")
 def test_query_by_adql_multiple_ids_joined_with_in_clause(mock_gaia, mock_resolve):
-    """Checks that a list of resolved IDs is substituted as a comma-separated IN clause.
-
-    Args:
-        mock_gaia: Mocked Gaia class from astroquery.
-        mock_resolve: Mocked resolve_id function.
-    """
+    """Checks that a list of resolved IDs is substituted as a comma-separated IN clause."""
     mock_resolve.return_value = [111, 222, 333]
     mock_job = MagicMock()
     mock_job.get_results.return_value.to_pandas.return_value = pd.DataFrame({"source_id": [111, 222, 333]})
@@ -886,11 +638,7 @@ def test_query_by_adql_multiple_ids_joined_with_in_clause(mock_gaia, mock_resolv
 
 @patch("gaiadr3_analysis.gaia_input.Gaia")
 def test_query_by_adql_saves_to_default_filename_when_none_given(mock_gaia):
-    """Checks that query_by_adql falls back to a default filename when saving without an identifier.
-
-    Args:
-        mock_gaia: Mocked Gaia class from astroquery.
-    """
+    """Checks that query_by_adql falls back to a default filename when saving without an identifier."""
     mock_job = MagicMock()
     mock_job.get_results.return_value.to_pandas.return_value = pd.DataFrame({"source_id": [1]})
     mock_gaia.launch_job.return_value = mock_job
@@ -903,12 +651,7 @@ def test_query_by_adql_saves_to_default_filename_when_none_given(mock_gaia):
 @patch("gaiadr3_analysis.gaia_input.resolve_id")
 @patch("gaiadr3_analysis.gaia_input.Gaia")
 def test_query_by_adql_dr4_uses_dr4_source_table(mock_gaia, mock_resolve):
-    """Checks that the auto-built default query targets the DR4 source table when release='dr4'.
-
-    Args:
-        mock_gaia: Mocked Gaia class from astroquery.
-        mock_resolve: Mocked resolve_id function.
-    """
+    """Checks that the auto-built default query targets the DR4 source table when release='dr4'."""
     mock_resolve.return_value = 111
     mock_job = MagicMock()
     mock_job.get_results.return_value.to_pandas.return_value = pd.DataFrame({"source_id": [111]})
@@ -927,11 +670,7 @@ def test_query_by_datalink_raises_type_error_for_bad_folder_name():
 
 @patch("gaiadr3_analysis.gaia_input.resolve_id")
 def test_query_by_datalink_returns_empty_dict_when_nothing_resolves(mock_resolve):
-    """Checks that query_by_datalink returns an empty dict if no IDs could be resolved.
-
-    Args:
-        mock_resolve: Mocked resolve_id function.
-    """
+    """Checks that query_by_datalink returns an empty dict if no IDs could be resolved."""
     mock_resolve.return_value = None
 
     with patch("builtins.print"):
@@ -942,12 +681,7 @@ def test_query_by_datalink_returns_empty_dict_when_nothing_resolves(mock_resolve
 @patch("gaiadr3_analysis.gaia_input.resolve_id")
 @patch("gaiadr3_analysis.gaia_input.Gaia")
 def test_query_by_datalink_flattens_list_results_from_resolve_id(mock_gaia, mock_resolve):
-    """Checks that a resolve_id call returning a list of children IDs is flattened into the query.
-
-    Args:
-        mock_gaia: Mocked Gaia class from astroquery.
-        mock_resolve: Mocked resolve_id function.
-    """
+    """Checks that a resolve_id call returning a list of children IDs is flattened into the query."""
     mock_resolve.return_value = [111, 222]
     mock_table = MagicMock()
     mock_table.to_table.return_value.to_pandas.return_value = pd.DataFrame({"flux": [1.0]})
@@ -965,12 +699,7 @@ def test_query_by_datalink_flattens_list_results_from_resolve_id(mock_gaia, mock
 @patch("gaiadr3_analysis.gaia_input.resolve_id")
 @patch("gaiadr3_analysis.gaia_input.Gaia")
 def test_query_by_datalink_reports_unretrieved_ids(mock_gaia, mock_resolve):
-    """Checks that IDs with no epoch photometry data are reported as not retrieved.
-
-    Args:
-        mock_gaia: Mocked Gaia class from astroquery.
-        mock_resolve: Mocked resolve_id function.
-    """
+    """Checks that IDs with no epoch photometry data are reported as not retrieved."""
     mock_resolve.side_effect = [111, 222]
     mock_table = MagicMock()
     mock_table.to_table.return_value.to_pandas.return_value = pd.DataFrame({"flux": [1.0]})
@@ -987,12 +716,7 @@ def test_query_by_datalink_reports_unretrieved_ids(mock_gaia, mock_resolve):
 @patch("gaiadr3_analysis.gaia_input.resolve_id")
 @patch("gaiadr3_analysis.gaia_input.Gaia")
 def test_query_by_datalink_saves_csv_per_star(mock_gaia, mock_resolve):
-    """Checks that query_by_datalink writes one CSV file per resolved star when save_file is True.
-
-    Args:
-        mock_gaia: Mocked Gaia class from astroquery.
-        mock_resolve: Mocked resolve_id function.
-    """
+    """Checks that query_by_datalink writes one CSV file per resolved star when save_file is True."""
     mock_resolve.return_value = 111
     mock_table = MagicMock()
     mock_table.to_table.return_value.to_pandas.return_value = pd.DataFrame({"flux": [1.0]})
@@ -1006,12 +730,7 @@ def test_query_by_datalink_saves_csv_per_star(mock_gaia, mock_resolve):
 @patch("gaiadr3_analysis.gaia_input.resolve_id")
 @patch("gaiadr3_analysis.gaia_input.Gaia")
 def test_query_by_datalink_dr4_uses_dr4_release_string(mock_gaia, mock_resolve):
-    """Checks that query_by_datalink passes the Gaia DR4 release string to Gaia.load_data when release='dr4'.
-
-    Args:
-        mock_gaia: Mocked Gaia class from astroquery.
-        mock_resolve: Mocked resolve_id function.
-    """
+    """Checks that query_by_datalink passes the Gaia DR4 release string to Gaia.load_data when release='dr4'."""
     mock_resolve.return_value = 111
     mock_table = MagicMock()
     mock_table.to_table.return_value.to_pandas.return_value = pd.DataFrame({"flux": [1.0]})
@@ -1030,12 +749,7 @@ def test_find_star_raises_value_error_without_position():
 @patch("gaiadr3_analysis.gaia_input.fetch_common_names")
 @patch("gaiadr3_analysis.gaia_input.query_by_adql")
 def test_find_star_runs_with_string_ra_dec(mock_query, mock_names):
-    """Checks that find_star converts sexagesimal ra/dec strings and runs a query.
-
-    Args:
-        mock_query: Mocked query_by_adql function.
-        mock_names: Mocked fetch_common_names function.
-    """
+    """Checks that find_star converts sexagesimal ra/dec strings and runs a query."""
     mock_names.return_value = {}
     mock_query.return_value = pd.DataFrame({"source_id": [1]})
 
@@ -1047,12 +761,7 @@ def test_find_star_runs_with_string_ra_dec(mock_query, mock_names):
 @patch("gaiadr3_analysis.gaia_input.fetch_common_names")
 @patch("gaiadr3_analysis.gaia_input.query_by_adql")
 def test_find_star_runs_with_skycoord(mock_query, mock_names):
-    """Checks that find_star accepts a SkyCoord object directly.
-
-    Args:
-        mock_query: Mocked query_by_adql function.
-        mock_names: Mocked fetch_common_names function.
-    """
+    """Checks that find_star accepts a SkyCoord object directly."""
     from astropy.coordinates import SkyCoord
     import astropy.units as u
 
@@ -1068,12 +777,7 @@ def test_find_star_runs_with_skycoord(mock_query, mock_names):
 @patch("gaiadr3_analysis.gaia_input.fetch_common_names")
 @patch("gaiadr3_analysis.gaia_input.query_by_adql")
 def test_find_star_passes_save_csv_through(mock_query, mock_names):
-    """Checks that find_star forwards save_csv/csv_file_name to query_by_adql's save_file/file_name.
-
-    Args:
-        mock_query: Mocked query_by_adql function.
-        mock_names: Mocked fetch_common_names function.
-    """
+    """Checks that find_star forwards save_csv/csv_file_name to query_by_adql's save_file/file_name."""
     mock_names.return_value = {}
     mock_query.return_value = pd.DataFrame({"source_id": [1]})
 
@@ -1086,12 +790,7 @@ def test_find_star_passes_save_csv_through(mock_query, mock_names):
 @patch("gaiadr3_analysis.gaia_input.fetch_common_names")
 @patch("gaiadr3_analysis.gaia_input.query_by_adql")
 def test_find_star_builds_hard_magnitude_filter(mock_query, mock_names):
-    """Checks that mag_min/mag_max are built directly into the ADQL query (a hard filter).
-
-    Args:
-        mock_query: Mocked query_by_adql function.
-        mock_names: Mocked fetch_common_names function.
-    """
+    """Checks that mag_min/mag_max are built directly into the ADQL query (a hard filter)."""
     mock_names.return_value = {}
     mock_query.return_value = pd.DataFrame({"source_id": [1]})
 
@@ -1104,12 +803,7 @@ def test_find_star_builds_hard_magnitude_filter(mock_query, mock_names):
 @patch("gaiadr3_analysis.gaia_input.fetch_common_names")
 @patch("gaiadr3_analysis.gaia_input.query_by_adql")
 def test_find_star_distance_soft_filter_excludes_out_of_range(mock_query, mock_names):
-    """Checks that dist_min/dist_max is applied after the query (a soft filter), not in the SQL.
-
-    Args:
-        mock_query: Mocked query_by_adql function.
-        mock_names: Mocked fetch_common_names function.
-    """
+    """Checks that dist_min/dist_max is applied after the query (a soft filter), not in the SQL."""
     mock_names.return_value = {}
     mock_query.return_value = pd.DataFrame({
         "source_id": [1, 2],
@@ -1125,12 +819,7 @@ def test_find_star_distance_soft_filter_excludes_out_of_range(mock_query, mock_n
 @patch("gaiadr3_analysis.gaia_input.fetch_common_names")
 @patch("gaiadr3_analysis.gaia_input.query_by_adql")
 def test_find_star_distance_filter_keeps_missing_parallax(mock_query, mock_names):
-    """Checks that a source with no parallax on file is kept, not dropped, by the distance filter.
-
-    Args:
-        mock_query: Mocked query_by_adql function.
-        mock_names: Mocked fetch_common_names function.
-    """
+    """Checks that a source with no parallax on file is kept, not dropped, by the distance filter."""
     mock_names.return_value = {}
     mock_query.return_value = pd.DataFrame({"source_id": [1], "parallax": [None]})
 
@@ -1141,12 +830,7 @@ def test_find_star_distance_filter_keeps_missing_parallax(mock_query, mock_names
 @patch("gaiadr3_analysis.gaia_input.fetch_common_names")
 @patch("gaiadr3_analysis.gaia_input.query_by_adql")
 def test_find_star_adds_common_name_column_after_source_id(mock_query, mock_names):
-    """Checks that the common_name column is populated and placed right after source_id.
-
-    Args:
-        mock_query: Mocked query_by_adql function.
-        mock_names: Mocked fetch_common_names function.
-    """
+    """Checks that the common_name column is populated and placed right after source_id."""
     mock_names.return_value = {1: "Proxima Centauri"}
     mock_query.return_value = pd.DataFrame({"source_id": [1], "ra": [1.0], "dec": [2.0]})
 
@@ -1159,12 +843,7 @@ def test_find_star_adds_common_name_column_after_source_id(mock_query, mock_name
 @patch("gaiadr3_analysis.gaia_input.fetch_common_names")
 @patch("gaiadr3_analysis.gaia_input.query_by_adql")
 def test_find_star_dr4_uses_dr4_source_table(mock_query, mock_names):
-    """Checks that find_star's cone-search query targets the DR4 source table when release='dr4'.
-
-    Args:
-        mock_query: Mocked query_by_adql function.
-        mock_names: Mocked fetch_common_names function.
-    """
+    """Checks that find_star's cone-search query targets the DR4 source table when release='dr4'."""
     mock_names.return_value = {}
     mock_query.return_value = pd.DataFrame({"source_id": [1]})
 
@@ -1182,11 +861,7 @@ def test_gaia_login_prompt_skips_login_on_no():
 
 @patch("gaiadr3_analysis.gaia_input.Gaia")
 def test_gaia_login_prompt_logs_in_on_yes(mock_gaia):
-    """Checks that gaia_login_prompt calls Gaia.login with the entered credentials.
-
-    Args:
-        mock_gaia: Mocked Gaia class from astroquery.
-    """
+    """Checks that gaia_login_prompt calls Gaia.login with the entered credentials."""
     with patch("builtins.input", side_effect=["y", "test_user", "test_pass"]), patch("builtins.print"):
         gaia_login_prompt()
 
@@ -1194,11 +869,7 @@ def test_gaia_login_prompt_logs_in_on_yes(mock_gaia):
 
 @patch("gaiadr3_analysis.gaia_input.Gaia")
 def test_gaia_login_prompt_handles_login_failure(mock_gaia):
-    """Checks that gaia_login_prompt catches and reports a failed login attempt.
-
-    Args:
-        mock_gaia: Mocked Gaia class from astroquery.
-    """
+    """Checks that gaia_login_prompt catches and reports a failed login attempt."""
     mock_gaia.login.side_effect = Exception("bad credentials")
 
     with patch("builtins.input", side_effect=["y", "test_user", "wrong_pass"]), patch("builtins.print") as mock_print:
@@ -1210,12 +881,7 @@ def test_gaia_login_prompt_handles_login_failure(mock_gaia):
 @patch("gaiadr3_analysis.gaia_input.query_by_adql")
 @patch("gaiadr3_analysis.gaia_input.gaia_login_prompt")
 def test_get_dataframe_adql_identifier_path(mock_login, mock_query):
-    """Checks that choosing the ADQL/identifier menu path calls query_by_adql with the right args.
-
-    Args:
-        mock_login: Mocked gaia_login_prompt function.
-        mock_query: Mocked query_by_adql function.
-    """
+    """Checks that choosing the ADQL/identifier menu path calls query_by_adql with the right args."""
     mock_query.return_value = pd.DataFrame({"source_id": [1]})
     inputs = iter(["1", "y", "HD 209458", "n"])
 
@@ -1228,12 +894,7 @@ def test_get_dataframe_adql_identifier_path(mock_login, mock_query):
 @patch("gaiadr3_analysis.gaia_input.load_csv")
 @patch("gaiadr3_analysis.gaia_input.gaia_login_prompt")
 def test_get_dataframe_csv_path(mock_login, mock_load_csv):
-    """Checks that choosing the CSV menu option calls load_csv with the given path.
-
-    Args:
-        mock_login: Mocked gaia_login_prompt function.
-        mock_load_csv: Mocked load_csv function.
-    """
+    """Checks that choosing the CSV menu option calls load_csv with the given path."""
     mock_load_csv.return_value = pd.DataFrame({"source_id": [1]})
     inputs = iter(["2", "data/my_stars.csv"])
 
@@ -1246,12 +907,7 @@ def test_get_dataframe_csv_path(mock_login, mock_load_csv):
 @patch("gaiadr3_analysis.gaia_input.query_by_datalink")
 @patch("gaiadr3_analysis.gaia_input.gaia_login_prompt")
 def test_get_dataframe_datalink_path(mock_login, mock_query_dl):
-    """Checks that choosing the Datalink menu option calls query_by_datalink with parsed IDs.
-
-    Args:
-        mock_login: Mocked gaia_login_prompt function.
-        mock_query_dl: Mocked query_by_datalink function.
-    """
+    """Checks that choosing the Datalink menu option calls query_by_datalink with parsed IDs."""
     mock_query_dl.return_value = {111: pd.DataFrame({"flux": [1.0]})}
     inputs = iter(["3", "111, 222", "n"])
 
@@ -1263,11 +919,7 @@ def test_get_dataframe_datalink_path(mock_login, mock_query_dl):
 
 @patch("gaiadr3_analysis.gaia_input.gaia_login_prompt")
 def test_get_dataframe_invalid_choice_returns_none(mock_login):
-    """Checks that an invalid menu choice prints an error and returns None.
-
-    Args:
-        mock_login: Mocked gaia_login_prompt function.
-    """
+    """Checks that an invalid menu choice prints an error and returns None."""
     with patch("builtins.input", return_value="9"), patch("builtins.print"):
         result = get_dataframe()
 

@@ -1,6 +1,6 @@
-#Creating a constant for which I can import for the Julian Date conversion for Gaia DR3 analysis.
 JD_offset = 2455197.5
 
+# Used in input
 SPTYPE_TEFF_RANGES = {
     "O": (30000, 60000),
     "B": (10000, 30000),
@@ -10,3 +10,5 @@ SPTYPE_TEFF_RANGES = {
     "K": (3700, 5200),
     "M": (2400, 3700),
 }
+
+DEFAULT_RELEASE = "dr3"

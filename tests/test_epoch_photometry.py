@@ -1,6 +1,6 @@
 """Tests for epoch_photometry.py
 
-Tests cover the phase calculation function and input validation for lightcurve, lomb_scargle, and pdm. 
+Tests cover the phase calculation function and input validation for lightcurve, lomb_scargle, and pdm.
 Matplotlib rendering is patched out so tests run without a display.
 """
 
@@ -137,6 +137,31 @@ def test_lightcurve_runs_with_xlims_and_ylims(epoch_df):
     with patch("matplotlib.pyplot.show"):
         lightcurve(epoch_df, xlims=(0, 100), ylims=(11, 14))
 
+@pytest.mark.parametrize("disable_flag, cols_to_drop", [
+    ("plot_g", ["g_transit_mag", "g_transit_time"]),
+    ("plot_bp", ["bp_mag", "bp_obs_time"]),
+    ("plot_rp", ["rp_mag", "rp_obs_time"]),
+])
+def test_lightcurve_disabling_a_band_does_not_require_its_columns(epoch_df, disable_flag, cols_to_drop):
+    """Checks that plot_g/plot_bp/plot_rp=False, per the docstring, doesn't require that band's columns.
+
+    Args:
+        epoch_df (pd.DataFrame): Sample photometry DataFrame fixture.
+        disable_flag (str): Which of plot_g/plot_bp/plot_rp to set False.
+        cols_to_drop (list[str]): That band's columns, removed from the DataFrame before calling.
+    """
+    df = epoch_df.drop(columns=cols_to_drop)
+    with patch("matplotlib.pyplot.show"):
+        lightcurve(df, **{disable_flag: False})
+
+def test_lightcurve_save_folder_none_skips_subfolder(epoch_df):
+    """Checks that save_folder=None saves directly under file_name, with no subfolder created."""
+    with patch("matplotlib.pyplot.show"), patch("matplotlib.pyplot.savefig") as mock_savefig:
+        lightcurve(epoch_df, save_plot=True, save_folder=None, file_name="my_plot")
+    mock_savefig.assert_called_once()
+    saved_path = mock_savefig.call_args[0][0]
+    assert saved_path == "my_plot.pdf"
+
 
 # lomb_scargle
 def test_lomb_scargle_returns_dataframe_with_expected_columns(time_series):
@@ -149,7 +174,7 @@ def test_lomb_scargle_returns_dataframe_with_expected_columns(time_series):
     result = lomb_scargle(t, mag)
 
     assert isinstance(result, pd.DataFrame)
-    assert list(result.columns) == ["period", "power", "Fasle Alarm Probability"]
+    assert list(result.columns) == ["period", "power", "false alarm probability"]
 
 def test_lomb_scargle_best_period_is_positive(time_series):
     """Checks that the best-fit period (highest power row) is a positive value.
@@ -195,7 +220,7 @@ def test_lomb_scargle_plot_runs_without_error(time_series):
 
 # pdm
 def test_pdm_returns_dataframe_with_expected_columns(time_series):
-    """Checks that pdm returns a DataFrame with the documented frequency/theta columns.
+    """Checks that pdm returns a DataFrame with the documented period/frequency/theta columns.
 
     Args:
         time_series (tuple): Sample (t, mag) time series fixture.
@@ -204,7 +229,7 @@ def test_pdm_returns_dataframe_with_expected_columns(time_series):
     result = pdm(t, mag)
 
     assert isinstance(result, pd.DataFrame)
-    assert list(result.columns) == ["frequency", "theta"]
+    assert list(result.columns) == ["period", "frequency", "theta"]
 
 def test_pdm_best_period_is_positive(time_series):
     """Checks that the best-fit period is a positive value.
