@@ -117,6 +117,19 @@ def test_ra_vs_dec_accepts_xlim_and_ylim(mean_df):
     with patch("matplotlib.pyplot.show"):
         ra_vs_dec(mean_df, xlim=50.0, ylim=50.0)
 
+def test_ra_vs_dec_save_plot_uses_given_save_folder(mean_df):
+    """Checks that save_plot=True saves inside the given save_folder, per the docstring.
+
+    Args:
+        mean_df (pd.DataFrame): Sample sky position DataFrame fixture.
+    """
+    with patch("matplotlib.pyplot.show"), \
+         patch("os.makedirs") as mock_makedirs, \
+         patch("matplotlib.pyplot.savefig") as mock_savefig:
+        ra_vs_dec(mean_df, save_plot=True, save_folder="myfolder")
+    mock_makedirs.assert_called_once_with("myfolder", exist_ok=True)
+    assert mock_savefig.call_args[0][0] == "myfolder/ra_vs_dec.pdf"
+
 
 # pmra_vs_pmdec
 def test_pmra_vs_pmdec_raises_type_error_for_non_dataframe():
@@ -159,6 +172,28 @@ def test_pmra_vs_pmdec_accepts_custom_title(proper_motion_df):
     """
     with patch("matplotlib.pyplot.show"):
         pmra_vs_pmdec(proper_motion_df, title="Proper Motion Plot")
+
+def test_pmra_vs_pmdec_save_plot_uses_given_save_folder(proper_motion_df):
+    """Checks that save_plot=True saves inside the given save_folder, per the docstring.
+
+    Args:
+        proper_motion_df (pd.DataFrame): Sample proper motion DataFrame fixture.
+    """
+    with patch("matplotlib.pyplot.show"), \
+         patch("os.makedirs") as mock_makedirs, \
+         patch("matplotlib.pyplot.savefig") as mock_savefig:
+        pmra_vs_pmdec(proper_motion_df, save_plot=True, save_folder="myfolder")
+    mock_makedirs.assert_called_once_with("myfolder", exist_ok=True)
+    assert mock_savefig.call_args[0][0] == "myfolder/pmra_vs_pmdec.pdf"
+
+def test_pmra_vs_pmdec_error_true_reports_all_missing_columns():
+    """Checks that error=True reports pmra/pmdec as missing too, not just the _error columns,
+    per the docstring ("KeyError: If the required columns are missing ('pmra', 'pmdec')")."""
+    with pytest.raises(KeyError) as exc_info:
+        pmra_vs_pmdec(pd.DataFrame(), error=True)
+    reported = [col.strip() for col in str(exc_info.value).split(":")[-1].strip(" '\"").split(",")]
+    for col in ("pmra", "pmdec", "pmra_error", "pmdec_error"):
+        assert col in reported
 
 
 # get_distance
@@ -235,7 +270,8 @@ def test_gaussian_symmetry():
 
 # plot_hr_diagram
 def test_plot_hr_diagram_runs_without_error(hr_df):
-    """Checks that plot_hr_diagram completes without error on valid input.
+    """Checks that plot_hr_diagram completes without error on the columns the docstring
+    says are required ("at minimum parallax, phot_g_mean_mag, phot_bp_mean_mag, and phot_rp_mean_mag").
 
     Args:
         hr_df (pd.DataFrame): Sample HR diagram DataFrame fixture.
@@ -253,6 +289,25 @@ def test_plot_hr_diagram_drops_nan_rows():
     })
     with patch("matplotlib.pyplot.show"):
         plot_hr_diagram(df)
+
+def test_plot_hr_diagram_save_plot_uses_given_save_folder(hr_df):
+    """Checks that save_plot=True saves inside the given save_folder, per the docstring.
+
+    Args:
+        hr_df (pd.DataFrame): Sample HR diagram DataFrame fixture.
+    """
+    full_df = hr_df.assign(
+        parallax_error=0.1,
+        phot_g_mean_flux=1.0, phot_g_mean_flux_error=0.1,
+        phot_bp_mean_flux=1.0, phot_bp_mean_flux_error=0.1,
+        phot_rp_mean_flux=1.0, phot_rp_mean_flux_error=0.1,
+    )
+    with patch("matplotlib.pyplot.show"), \
+         patch("os.makedirs") as mock_makedirs, \
+         patch("matplotlib.pyplot.savefig") as mock_savefig:
+        plot_hr_diagram(full_df, save_plot=True, save_folder="myfolder")
+    mock_makedirs.assert_called_once_with("myfolder", exist_ok=True)
+    assert mock_savefig.call_args[0][0] == "myfolder/hr_diagram.pdf"
 
 
 # hist
@@ -283,6 +338,19 @@ def test_hist_accepts_custom_bin_count(distances):
     with patch("matplotlib.pyplot.show"):
         hist(distances, bin_num=20)
 
+def test_hist_save_plot_uses_given_save_folder(distances):
+    """Checks that save_plot=True saves inside the given save_folder, per the docstring.
+
+    Args:
+        distances (pd.Series): Sample distance values fixture.
+    """
+    with patch("matplotlib.pyplot.show"), \
+         patch("os.makedirs") as mock_makedirs, \
+         patch("matplotlib.pyplot.savefig") as mock_savefig:
+        hist(distances, save_plot=True, save_folder="myfolder")
+    mock_makedirs.assert_called_once_with("myfolder", exist_ok=True)
+    assert mock_savefig.call_args[0][0] == "myfolder/histogram.pdf"
+
 
 # fitted_hist
 def test_fitted_hist_runs_without_error(distances):
@@ -304,3 +372,16 @@ def test_fitted_hist_runs_with_parallax_conversion():
     parallax_values = pd.Series(rng.normal(loc=5.0, scale=0.5, size=200))
     with patch("matplotlib.pyplot.show"):
         fitted_hist(parallax_values, parallax=True, range=[100, 400])
+
+def test_fitted_hist_save_plot_uses_given_save_folder(distances):
+    """Checks that save_plot=True saves inside the given save_folder, per the docstring.
+
+    Args:
+        distances (pd.Series): Sample distance values fixture.
+    """
+    with patch("matplotlib.pyplot.show"), \
+         patch("os.makedirs") as mock_makedirs, \
+         patch("matplotlib.pyplot.savefig") as mock_savefig:
+        fitted_hist(distances, range=[50, 400], save_plot=True, save_folder="myfolder")
+    mock_makedirs.assert_called_once_with("myfolder", exist_ok=True)
+    assert mock_savefig.call_args[0][0] == "myfolder/fitted_hist.pdf"
