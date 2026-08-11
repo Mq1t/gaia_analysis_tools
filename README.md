@@ -1,7 +1,7 @@
-# gaiadr3-analysis
+# Gaia analysis tools
 README:
-This is a set of tools and functions for the purpose of analysing Gaia DR3 data (soon to be DR4). 
+This is a set of tools and functions for the purpose of analysing Gaia DR3 & DR4 data. 
 
-Install using pip install git+https://github.com/Mq1t/gaiadr3-analysis.git
+Install using pip install git+https://github.com/Mq1t/gaia_analysis_tools.git
 
-Documentation available at https://app.readthedocs.org/projects/gaiadr3-analysis/
+Documentation available at https://app.readthedocs.org/projects/gaia_analysis_tools/
