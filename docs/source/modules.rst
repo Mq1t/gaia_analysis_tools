@@ -1,4 +1,4 @@
-gaiadr3_analysis
+gaia_analysis_tools
 ================
 
 .. toctree::

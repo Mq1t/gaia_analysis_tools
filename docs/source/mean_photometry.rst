@@ -1,7 +1,7 @@
 mean\_photometry module
 =======================
 
-.. automodule:: gaiadr3_analysis.mean_photometry
+.. automodule:: gaia_analysis_tools.mean_photometry
    :members:
    :show-inheritance:
    :undoc-members:
