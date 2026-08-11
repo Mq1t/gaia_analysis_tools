@@ -87,14 +87,15 @@ def lightcurve(
             required_cols.update({'g_mag', 'g_obs_time'})
             if error:
                 required_cols.update({'g_flux', 'g_flux_error'})
+            g = 'g_mag'
+            g_time = 'g_obs_time'
         elif release == "dr4":
             required_cols.update({'g_mag', 'g_obs_time'})
             if error:
                 required_cols.update({'g_flux', 'g_flux_error'})
+            g = 'g_transit_mag'
+            g_time = 'g_transit_time'
 
-
-        g = 'g_transit_mag'
-        g_time = 'g_transit_time'
 
     if plot_bp == False:
         subplot_num -= 1
