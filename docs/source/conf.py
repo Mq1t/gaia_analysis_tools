@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.abspath('../../'))
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'Gaia DR3 Analysis'
+project = 'Gaia Analysis Tools'
 copyright = '2026, Matthew McGuire, Jennifer Farrell, Nakia McKay'
 author = 'Matthew McGuire, Jennifer Farrell, Nakia McKay'
 release = '2026'
