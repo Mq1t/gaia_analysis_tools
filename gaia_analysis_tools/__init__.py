@@ -1,6 +1,6 @@
-"""Gaia DR3 Analysis Package
+"""Gaia Analysis Package
 
-A package for analyzing data from the Gaia Data Release 3.
+A package for analyzing data from the Gaia Data Release 3 and 4.
 """
 
 from .constants import *
