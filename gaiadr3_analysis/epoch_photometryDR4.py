@@ -6,7 +6,7 @@ from astropy.timeseries import LombScargle
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from PyAstronomy.pyTiming import pyPDM
-from .constants import JD_offset
+from .constants import JD_offset, DEFAULT_RELEASE
 import os
 
 
@@ -31,6 +31,7 @@ def phase(t, T_0, P):
 #Plot G, Bp and Rp magnitude light curves in time.
 def lightcurve(
         df:pd.DataFrame, 
+        release:bool = DEFAULT_RELEASE,
         error:bool = False,
         title:str='Flux Vs. Time', 
         overplot:bool=True, 
@@ -49,6 +50,7 @@ def lightcurve(
     Args:
         df (pd.DataFrame): DataFrame containing photometry and time columns.
         error (bool): If true the plot will include error bars using required columns 'g_transit_flux_error', 'bp_flux_error', 'rp_flux_error'.
+        release (bool): The data release. This mostly affects column names used.
         title (str, optional): Plot title. Defaults to 'Flux Vs. Time'.
         overplot (bool, optional): If True, overplot all bands on a single axes. Defaults to True.
         plot_g (bool, optional): If True, includes the G band in the plot. Defaults to True.
@@ -81,9 +83,16 @@ def lightcurve(
     if plot_g == False:
         subplot_num -= 1
     else:
-        required_cols.update({'g_mag', 'g_obs_time'})
-        if error:
-            required_cols.update({'g_flux', 'g_flux_error'})
+        if release == "dr3":
+            required_cols.update({'g_mag', 'g_obs_time'})
+            if error:
+                required_cols.update({'g_flux', 'g_flux_error'})
+        elif release == "dr4":
+            required_cols.update({'g_mag', 'g_obs_time'})
+            if error:
+                required_cols.update({'g_flux', 'g_flux_error'})
+
+
         g = 'g_transit_mag'
         g_time = 'g_transit_time'
 
@@ -237,6 +246,7 @@ def lightcurve(
 def lomb_scargle(
     t: pd.DataFrame = None, 
     mag: pd.DataFrame = None, 
+    release:bool = DEFAULT_RELEASE,
     title:str='Lomb-Scargle Periodogram', 
     period_range: list[float] = None, 
     xlims: list[float] = None, 
@@ -254,6 +264,7 @@ def lomb_scargle(
     Args:
         t (array-like): Time values (JD or relative). If None, synthetic data is used as an example.
         mag (array-like): Magnitudes or fluxes corresponding to 't'. If None, synthetic data is used as an example.
+        release (bool): The data release. This mostly affects column names used.
         title (str, optional): Display title for the corresponding plot. Defaults to 'Lomb-Scargle Periodogram'.
         period_range (list[float], optional): [P_min, P_max] search range in days. If None, it is estimated using the Nyquist frequency.
         xlims (list[float], optional): X-axis limits for period plot (days).
@@ -379,6 +390,7 @@ def plot_ls(
 def pdm(
         t: pd.DataFrame, 
         mag: pd.DataFrame, 
+        release:bool = DEFAULT_RELEASE,
         title:str='Phase Dispersion Minimization', 
         bins:int|float = 50, 
         covers:int = 3, 
@@ -396,6 +408,7 @@ def pdm(
     Args:
         t (array-like): Time values (JD or relative).
         mag (array-like): Magnitudes or fluxes corresponding to 't'. 
+        release (bool): The data release. This mostly affects column names.
         title (str, optional): Display title for the corresponding plot. Defaults to 'Phase Dispersion Minimization'.
         bins (int, optional): Number of bins to be used in the PDM analysis. Defaults to 50.
         covers (int, optional): Number of covers to be uesd in the PDM analysis. Defaults to 3.
