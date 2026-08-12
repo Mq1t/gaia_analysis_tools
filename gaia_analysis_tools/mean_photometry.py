@@ -182,7 +182,7 @@ def pmra_vs_pmdec(
     if save_plot:
         safe_name = file_name.replace(" ", "_")
         safe_name = f"{safe_name}.pdf"
-        if default_folder is not None:
+        if save_folder is not None:
             os.makedirs(save_folder, exist_ok=True)
             filepath = os.path.join(save_folder, safe_name)
         else:
@@ -338,7 +338,7 @@ def plot_hr_diagram(
     if save_plot:
         safe_name = file_name.replace(" ", "_")
         safe_name = f"{safe_name}.pdf"
-        if default_folder is not None:
+        if save_folder is not None:
             os.makedirs(save_folder, exist_ok=True)
             filepath = os.path.join(save_folder, safe_name)
         else:
@@ -382,7 +382,7 @@ def hist(
     if save_plot:
         safe_name = file_name.replace(" ", "_")
         safe_name = f"{safe_name}.pdf"
-        if default_folder is not None:
+        if save_folder is not None:
             os.makedirs(save_folder, exist_ok=True)
             filepath = os.path.join(save_folder, safe_name)
         else:
@@ -449,7 +449,7 @@ def fitted_hist(
     if save_plot:
         safe_name = file_name.replace(" ", "_")
         safe_name = f"{safe_name}.pdf"
-        if default_folder is not None:
+        if save_folder is not None:
             os.makedirs(save_folder, exist_ok=True)
             filepath = os.path.join(save_folder, safe_name)
         else:
