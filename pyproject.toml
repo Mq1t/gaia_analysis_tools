@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "gaiadr3-analysis"
+name = "gaia_analysis_tools"
 version = "0.1.0"
-description = "Tools for Gaia DR3 astrophysical data analysis"
+description = "Tools for Gaia astrophysical data analysis"
 authors = [
     { name = "Matthew McGuire" },
     { name = "Nakia McKay" },

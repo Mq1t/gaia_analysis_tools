@@ -90,7 +90,7 @@ def lightcurve(
             required_cols.update({'g_transit_mag', 'g_transit_time'})
             if error:
                 required_cols.update({'g_transit_flux', 'g_transit_flux_error'})
-            g = 'g_tansit_mag'
+            g = 'g_transit_mag'
             g_time = 'g_transit_time'
         elif release == "dr4":
             required_cols.update({'g_mag', 'g_obs_time'})
