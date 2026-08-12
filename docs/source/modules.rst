@@ -1,4 +1,4 @@
-gaia_analysis_tools
+Gaia Analysis Tools
 ================
 
 .. toctree::

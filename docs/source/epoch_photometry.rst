@@ -1,7 +1,7 @@
-epoch\_photometry module
-========================
+gaia_analysis_tools.epoch_photometry
+====================================
 
-.. automodule:: gaiadr3_analysis.epoch_photometry
+.. automodule:: gaia_analysis_tools.epoch_photometry
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:

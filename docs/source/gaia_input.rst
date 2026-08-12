@@ -1,7 +1,7 @@
-gaia\_input module
-==================
+gaia_analysis_tools.gaia_input
+====================================
 
-.. automodule:: gaiadr3_analysis.gaia_input
+.. automodule:: gaia_analysis_tools.gaia_input
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:

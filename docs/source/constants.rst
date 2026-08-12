@@ -1,7 +1,7 @@
-constants module
-================
+gaia_analysis_tools.constants
+=============================
 
-.. automodule:: gaiadr3_analysis.constants
+.. automodule:: gaia_analysis_tools.constants
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:
