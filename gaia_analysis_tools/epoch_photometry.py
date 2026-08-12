@@ -128,33 +128,36 @@ def lightcurve(
     # Filter Rejections if true for DR3 (Column does not exist in DR4. Look for alternative. Maybe 'phot_ccd_proc_flags'?)
 
     if rejectflags == True and release == "dr3":
-        g_df = df[df['variability_flag_g_reject'] == False]
-        bp_df = df[df['variability_flag_bp_reject'] == False]
-        rp_df = df[df['variability_flag_rp_reject'] == False]
+        if plot_g: g_df = df[df['variability_flag_g_reject'] == False]
+        if plot_bp: bp_df = df[df['variability_flag_bp_reject'] == False]
+        if plot_rp: rp_df = df[df['variability_flag_rp_reject'] == False]
     else:
-        g_df = df
-        bp_df = df
-        rp_df = df
+        if plot_g: g_df = df
+        if plot_bp: bp_df = df
+        if plot_rp: rp_df = df
 
-    print(f"Len g, bp, and rp datasets respectively: {len(g_df)}, {len(bp_df)}, {len(rp_df)}")
-    #X-Value: G Transit time
-    x_g = g_df[g_time] + JD_offset
-    x_bp = bp_df[bp_time] + JD_offset
-    x_rp = rp_df[rp_time] + JD_offset
+    if plot_g and plot_bp and plot_rp:
+        #Sanity check
+        print(f"Len g, bp, and rp datasets respectively: {len(g_df)}, {len(bp_df)}, {len(rp_df)}")
+
+    #X-Value: Transit time
+    if plot_g: x_g = g_df[g_time] + JD_offset
+    if plot_bp: x_bp = bp_df[bp_time] + JD_offset
+    if plot_rp: x_rp = rp_df[rp_time] + JD_offset
     x_label = "Time (JD)"
     
     #Phase x if true
     if period is not None:
-        x_g = phase(x_g, x_g.median(), period)
-        x_bp = phase(x_bp, x_g.median(), period)
-        x_rp = phase(x_rp, x_g.median(), period)
+        if plot_g: x_g = phase(x_g, x_g.median(), period)
+        if plot_bp: x_bp = phase(x_bp, x_g.median(), period)
+        if plot_rp: x_rp = phase(x_rp, x_g.median(), period)
         x_label = f"Phase, p = {period}"
         print(f"P value: {period}")
     
     #Y-Value: Magnitudes for light band
-    y_g = g_df[g] 
-    y_bp = bp_df[bp]
-    y_rp = rp_df[rp]
+    if plot_g: y_g = g_df[g] 
+    if plot_bp: y_bp = bp_df[bp]
+    if plot_rp: y_rp = rp_df[rp]
     
     #Calculate error values
     if error:
