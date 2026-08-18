@@ -11,7 +11,7 @@ plt.style.use(style)
 #Create a Ra vs Dec diagram.
 def ra_vs_dec(
         df: pd.DataFrame, 
-        error: bool = False,
+        error: bool = True,
         xlim: int|float = None, 
         ylim: int|float = None, 
         color: str ='red', 
@@ -105,7 +105,7 @@ def ra_vs_dec(
 #Proper motion
 def pmra_vs_pmdec(
         df: pd.DataFrame, 
-        error:bool = False,
+        error:bool = True,
         xlim:float = None, 
         ylim:float = None, 
         color: str ='red', 
@@ -243,7 +243,7 @@ def G_RP_error(RP_flux, RP_flux_error):
 
 def plot_hr_diagram(
         df, 
-        error: bool = False,
+        error: bool = True,
         underlay: bool = False,
         xlim: list[int] = [-1, 5],
         ylim: list[int] = [0, 20],

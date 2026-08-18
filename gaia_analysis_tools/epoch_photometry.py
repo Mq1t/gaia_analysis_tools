@@ -32,8 +32,9 @@ def phase(t, T_0, P):
 def lightcurve(
         df:pd.DataFrame, 
         release:bool = DEFAULT_RELEASE,
-        error:bool = False,
+        error:bool = True,
         title:str='Flux Vs. Time', 
+        connect_points = False,
         overplot:bool=True, 
         plot_g:bool = True,
         plot_bp:bool = True,
@@ -174,6 +175,7 @@ def lightcurve(
         if plot_g: 
             if error: plt.errorbar(x_g, y_g, yerr=g_err, fmt='none', ecolor='green', elinewidth=0.5, capsize=3, alpha=0.4)
             plt.scatter(x_g, y_g, c ='green', s = 3, label='G Band')
+            plt.plot(x_g, y_g, c='green')
         if plot_bp: 
             if error: plt.errorbar(x_bp, y_bp, yerr=bp_err, fmt='none', ecolor='blue', elinewidth=0.5, capsize=3, alpha=0.4)
             plt.scatter(x_bp, y_bp, c ='blue', s = 3, label='Bp Band')
