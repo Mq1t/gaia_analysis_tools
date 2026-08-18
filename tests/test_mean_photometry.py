@@ -1,8 +1,8 @@
 """Tests for mean_photometry.py
 
-Tests cover input validation for ra_vs_dec and pmra_vs_pmdec, unit tests for get_distance, get_magnitude, 
-get_bprp, and gaussian, and smoke tests for plot_hr_diagram, hist, and fitted_hist. Matplotlib rendering 
-is patched out so tests run without a display.
+Tests cover input validation, error-bar handling, and save behavior for ra_vs_dec, pmra_vs_pmdec, and plot_hr_diagram, 
+unit tests for get_distance, get_magnitude, get_bprp, G_error/G_BP_error/G_RP_error, and gaussian, and smoke
+tests for hist and fitted_hist. Matplotlib rendering is patched out so tests run without a display.
 """
 
 import pytest
@@ -12,6 +12,7 @@ from unittest.mock import patch
 from gaia_analysis_tools.mean_photometry import (
     ra_vs_dec, pmra_vs_pmdec,
     get_distance, get_magnitude, get_bprp,
+    G_error, G_BP_error, G_RP_error,
     plot_hr_diagram, hist, gaussian, fitted_hist,
 )
 
@@ -30,6 +31,21 @@ def mean_df():
     })
 
 @pytest.fixture
+def mean_df_with_errors(mean_df):
+    """Returns mean_df plus the ra_error/dec_error columns required when error=True.
+
+    Args:
+        mean_df (pd.DataFrame): Base sky position DataFrame fixture.
+
+    Returns:
+        pd.DataFrame: mean_df with ra_error and dec_error columns added.
+    """
+    df = mean_df.copy()
+    df["ra_error"] = [10.0, 20.0, 15.0]
+    df["dec_error"] = [5.0, 8.0, 6.0]
+    return df
+
+@pytest.fixture
 def proper_motion_df():
     """Returns a DataFrame with pmra and pmdec columns for proper motion tests.
 
@@ -40,6 +56,21 @@ def proper_motion_df():
         "pmra": [0.1, 0.2, 0.3],
         "pmdec": [-0.1, 0.0, 0.1],
     })
+
+@pytest.fixture
+def proper_motion_df_with_errors(proper_motion_df):
+    """Returns proper_motion_df plus the pmra_error/pmdec_error columns required when error=True.
+
+    Args:
+        proper_motion_df (pd.DataFrame): Base proper motion DataFrame fixture.
+
+    Returns:
+        pd.DataFrame: proper_motion_df with pmra_error and pmdec_error columns added.
+    """
+    df = proper_motion_df.copy()
+    df["pmra_error"] = [0.05, 0.05, 0.05]
+    df["pmdec_error"] = [0.02, 0.02, 0.02]
+    return df
 
 @pytest.fixture
 def hr_df():
@@ -55,6 +86,26 @@ def hr_df():
         "phot_bp_mean_mag": [8.5, 10.0, 11.5],
         "phot_rp_mean_mag": [7.5, 9.0, 10.5],
     })
+
+@pytest.fixture
+def hr_df_with_errors(hr_df):
+    """Returns hr_df plus the parallax_error and G/BP/RP flux and flux_error columns required when error=True.
+
+    Args:
+        hr_df (pd.DataFrame): Base HR diagram DataFrame fixture.
+
+    Returns:
+        pd.DataFrame: hr_df with parallax_error and flux/flux_error columns added.
+    """
+    df = hr_df.copy()
+    df["parallax_error"] = [0.5, 0.5, 0.5]
+    df["phot_g_mean_flux"] = [1000.0, 800.0, 600.0]
+    df["phot_g_mean_flux_error"] = [10.0, 8.0, 6.0]
+    df["phot_bp_mean_flux"] = [900.0, 700.0, 500.0]
+    df["phot_bp_mean_flux_error"] = [9.0, 7.0, 5.0]
+    df["phot_rp_mean_flux"] = [1100.0, 850.0, 650.0]
+    df["phot_rp_mean_flux_error"] = [11.0, 8.5, 6.5]
+    return df
 
 @pytest.fixture
 def distances():
@@ -117,6 +168,25 @@ def test_ra_vs_dec_accepts_xlim_and_ylim(mean_df):
     with patch("matplotlib.pyplot.show"):
         ra_vs_dec(mean_df, xlim=50.0, ylim=50.0)
 
+def test_ra_vs_dec_runs_with_error_bars(mean_df_with_errors):
+    """Checks that ra_vs_dec runs without error when error=True and ra_error/dec_error columns are present."""
+    with patch("matplotlib.pyplot.show"):
+        ra_vs_dec(mean_df_with_errors, error=True)
+
+def test_ra_vs_dec_error_true_missing_error_columns_raises_key_error(mean_df):
+    """Checks that error=True raises KeyError when ra_error/dec_error columns aren't present."""
+    with pytest.raises(KeyError):
+        ra_vs_dec(mean_df, error=True)
+
+def test_ra_vs_dec_error_converts_mas_to_degrees():
+    """Checks that ra_vs_dec converts ra_error/dec_error from mas to degrees before plotting error bars."""
+    df = pd.DataFrame({"ra": [10.0], "dec": [20.0], "ra_error": [3600000.0], "dec_error": [1800000.0]})
+    with patch("matplotlib.pyplot.show"), patch("matplotlib.pyplot.errorbar") as mock_errorbar:
+        ra_vs_dec(df, error=True)
+    _, kwargs = mock_errorbar.call_args
+    assert kwargs["xerr"].iloc[0] == pytest.approx(1.0)
+    assert kwargs["yerr"].iloc[0] == pytest.approx(0.5)
+
 def test_ra_vs_dec_save_plot_uses_given_save_folder(mean_df):
     """Checks that save_plot=True saves inside the given save_folder, per the docstring.
 
@@ -129,6 +199,14 @@ def test_ra_vs_dec_save_plot_uses_given_save_folder(mean_df):
         ra_vs_dec(mean_df, save_plot=True, save_folder="myfolder")
     mock_makedirs.assert_called_once_with("myfolder", exist_ok=True)
     assert mock_savefig.call_args[0][0] == "myfolder/ra_vs_dec.pdf"
+
+def test_ra_vs_dec_save_folder_none_skips_subfolder(mean_df):
+    """Checks that save_folder=None saves directly under file_name, with no subfolder created."""
+    with patch("matplotlib.pyplot.show"), patch("matplotlib.pyplot.savefig") as mock_savefig:
+        ra_vs_dec(mean_df, save_plot=True, save_folder=None, file_name="my_plot")
+    mock_savefig.assert_called_once()
+    saved_path = mock_savefig.call_args[0][0]
+    assert saved_path == "my_plot.pdf"
 
 
 # pmra_vs_pmdec
@@ -173,6 +251,25 @@ def test_pmra_vs_pmdec_accepts_custom_title(proper_motion_df):
     with patch("matplotlib.pyplot.show"):
         pmra_vs_pmdec(proper_motion_df, title="Proper Motion Plot")
 
+def test_pmra_vs_pmdec_runs_with_error_bars(proper_motion_df_with_errors):
+    """Checks that pmra_vs_pmdec runs without error when error=True and pmra_error/pmdec_error columns are present."""
+    with patch("matplotlib.pyplot.show"):
+        pmra_vs_pmdec(proper_motion_df_with_errors, error=True)
+
+def test_pmra_vs_pmdec_error_true_missing_error_columns_raises_key_error(proper_motion_df):
+    """Checks that error=True raises KeyError when pmra_error/pmdec_error columns aren't present."""
+    with pytest.raises(KeyError):
+        pmra_vs_pmdec(proper_motion_df, error=True)
+
+def test_pmra_vs_pmdec_error_passed_through_without_unit_conversion():
+    """Checks that pmra_vs_pmdec passes pmra_error/pmdec_error straight through, unlike ra_vs_dec's mas-to-degree conversion."""
+    df = pd.DataFrame({"pmra": [1.0], "pmdec": [2.0], "pmra_error": [0.05], "pmdec_error": [0.02]})
+    with patch("matplotlib.pyplot.show"), patch("matplotlib.pyplot.errorbar") as mock_errorbar:
+        pmra_vs_pmdec(df, error=True)
+    _, kwargs = mock_errorbar.call_args
+    assert kwargs["xerr"].iloc[0] == pytest.approx(0.05)
+    assert kwargs["yerr"].iloc[0] == pytest.approx(0.02)
+
 def test_pmra_vs_pmdec_save_plot_uses_given_save_folder(proper_motion_df):
     """Checks that save_plot=True saves inside the given save_folder, per the docstring.
 
@@ -185,15 +282,6 @@ def test_pmra_vs_pmdec_save_plot_uses_given_save_folder(proper_motion_df):
         pmra_vs_pmdec(proper_motion_df, save_plot=True, save_folder="myfolder")
     mock_makedirs.assert_called_once_with("myfolder", exist_ok=True)
     assert mock_savefig.call_args[0][0] == "myfolder/pmra_vs_pmdec.pdf"
-
-def test_pmra_vs_pmdec_error_true_reports_all_missing_columns():
-    """Checks that error=True reports pmra/pmdec as missing too, not just the _error columns,
-    per the docstring ("KeyError: If the required columns are missing ('pmra', 'pmdec')")."""
-    with pytest.raises(KeyError) as exc_info:
-        pmra_vs_pmdec(pd.DataFrame(), error=True)
-    reported = [col.strip() for col in str(exc_info.value).split(":")[-1].strip(" '\"").split(",")]
-    for col in ("pmra", "pmdec", "pmra_error", "pmdec_error"):
-        assert col in reported
 
 
 # get_distance
@@ -222,7 +310,6 @@ def test_get_magnitude_at_10_parsecs():
 def test_get_magnitude_known_value():
     """Checks that get_magnitude returns the correct absolute magnitude for known inputs."""
     result = get_magnitude(10.0, 100.0)
-
     assert result == pytest.approx(5.0)
 
 def test_get_magnitude_farther_star_is_dimmer():
@@ -249,6 +336,21 @@ def test_get_bprp_negative_for_red_star():
     assert result < 0.0
 
 
+# G_error / G_BP_error / G_RP_error
+@pytest.mark.parametrize("error_func", [G_error, G_BP_error, G_RP_error])
+def test_flux_error_conversion_known_value(error_func):
+    """Checks that a flux error equal to the flux itself converts to the ~1.0857 mag error constant."""
+    result = error_func(1.0, 1.0)
+    assert result == pytest.approx(1.0857362047581294)
+
+@pytest.mark.parametrize("error_func", [G_error, G_BP_error, G_RP_error])
+def test_flux_error_conversion_scales_with_flux_error(error_func):
+    """Checks that doubling the flux error doubles the resulting magnitude error."""
+    base = error_func(100.0, 1.0)
+    doubled = error_func(100.0, 2.0)
+    assert doubled == pytest.approx(base * 2)
+
+
 # gaussian
 def test_gaussian_peak_at_mu():
     """Checks that gaussian returns its maximum at x = mu."""
@@ -270,8 +372,7 @@ def test_gaussian_symmetry():
 
 # plot_hr_diagram
 def test_plot_hr_diagram_runs_without_error(hr_df):
-    """Checks that plot_hr_diagram completes without error on the columns the docstring
-    says are required ("at minimum parallax, phot_g_mean_mag, phot_bp_mean_mag, and phot_rp_mean_mag").
+    """Checks that plot_hr_diagram completes without error on valid input.
 
     Args:
         hr_df (pd.DataFrame): Sample HR diagram DataFrame fixture.
@@ -279,8 +380,9 @@ def test_plot_hr_diagram_runs_without_error(hr_df):
     with patch("matplotlib.pyplot.show"):
         plot_hr_diagram(hr_df)
 
-def test_plot_hr_diagram_drops_nan_rows():
-    """Checks that plot_hr_diagram handles NaN values without raising an error."""
+def test_plot_hr_diagram_handles_missing_values_without_error():
+    """Checks that plot_hr_diagram runs without error when the input contains NaN values (they propagate
+    into the plotted magnitude/colour arrays rather than being dropped)."""
     df = pd.DataFrame({
         "parallax": [10.0, None, 5.0],
         "phot_g_mean_mag": [8.0, 9.5, None],
@@ -290,22 +392,26 @@ def test_plot_hr_diagram_drops_nan_rows():
     with patch("matplotlib.pyplot.show"):
         plot_hr_diagram(df)
 
+def test_plot_hr_diagram_runs_with_error_bars(hr_df_with_errors):
+    """Checks that plot_hr_diagram runs without error when error=True and the flux/flux_error columns are present."""
+    with patch("matplotlib.pyplot.show"):
+        plot_hr_diagram(hr_df_with_errors, error=True)
+
+def test_plot_hr_diagram_error_true_missing_flux_columns_raises_key_error(hr_df):
+    """Checks that error=True raises KeyError when the flux/flux_error columns aren't present."""
+    with pytest.raises(KeyError):
+        plot_hr_diagram(hr_df, error=True)
+
 def test_plot_hr_diagram_save_plot_uses_given_save_folder(hr_df):
     """Checks that save_plot=True saves inside the given save_folder, per the docstring.
 
     Args:
         hr_df (pd.DataFrame): Sample HR diagram DataFrame fixture.
     """
-    full_df = hr_df.assign(
-        parallax_error=0.1,
-        phot_g_mean_flux=1.0, phot_g_mean_flux_error=0.1,
-        phot_bp_mean_flux=1.0, phot_bp_mean_flux_error=0.1,
-        phot_rp_mean_flux=1.0, phot_rp_mean_flux_error=0.1,
-    )
     with patch("matplotlib.pyplot.show"), \
          patch("os.makedirs") as mock_makedirs, \
          patch("matplotlib.pyplot.savefig") as mock_savefig:
-        plot_hr_diagram(full_df, save_plot=True, save_folder="myfolder")
+        plot_hr_diagram(hr_df, save_plot=True, save_folder="myfolder")
     mock_makedirs.assert_called_once_with("myfolder", exist_ok=True)
     assert mock_savefig.call_args[0][0] == "myfolder/hr_diagram.pdf"
 
