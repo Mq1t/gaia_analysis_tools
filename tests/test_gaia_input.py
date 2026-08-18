@@ -1,8 +1,7 @@
 """Tests for gaia_input.py
 
 Tests cover CSV loading, filtering logic, identifier resolution via SIMBAD, cluster lookup, ADQL/Datalink querying,
-coordinate-based star search, login handling, the interactive menu's routing logic, and the Gaia DR3/DR4 release
-default.
+coordinate-based star search, login handling, the interactive menu's routing logic, and the Gaia DR3/DR4 release.
 
 All calls to SIMBAD and the Gaia archive (via astroquery) are mocked, so this runs fully offline and does not require
 network access or live credentials. Interactive input prompts are also mocked with scripted answers so the menu
