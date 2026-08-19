@@ -28,6 +28,22 @@ def phase(t, T_0, P):
     """
     return ((t-T_0)/P) % 1
 
+def sine_function(x, A, B, C, D):
+    """
+    Calculate a sine curve
+
+    Args:
+        x (array-like): X axis values
+        A (float): Amplitude
+        B (float): Frequency
+        C (float): Phase Shift
+        D (float): Vertical Offset
+
+    Returns:
+        float: General form solution of a sine curve
+    """
+    return A * np.sin(B * x + C) + D
+
 #Plot G, Bp and Rp magnitude light curves in time.
 def lightcurve(
         df:pd.DataFrame, 
@@ -163,7 +179,10 @@ def lightcurve(
     #Calculate error values
     if error:
         if plot_g:
-            g_err = 1.0857362047581294 * (g_df['g_flux_error'] / g_df['g_flux'])
+            if release == "dr3":
+                            g_err = 1.0857362047581294 * (g_df['g_transit_flux_error'] / g_df['g_transit_flux'])
+            if release == "dr4":
+                g_err = 1.0857362047581294 * (g_df['g_flux_error'] / g_df['g_flux'])
         if plot_bp:
             bp_err = 1.0857362047581294 * (bp_df['bp_flux_error'] / bp_df['bp_flux'])
         if plot_rp:
@@ -173,15 +192,20 @@ def lightcurve(
         plt.xlabel(x_label)
         plt.ylabel("Band (app mag)")
         if plot_g: 
-            if error: plt.errorbar(x_g, y_g, yerr=g_err, fmt='none', ecolor='green', elinewidth=0.5, capsize=3, alpha=0.4)
+            if error: plt.errorbar(x_g, y_g, yerr=g_err, fmt='none', ecolor='green', elinewidth=0.5, capsize=2, alpha=0.4)
             plt.scatter(x_g, y_g, c ='green', s = 3, label='G Band')
-            plt.plot(x_g, y_g, c='green')
+            if connect_points:
+                plt.plot(x_g, y_g, c='green', s = '1')
         if plot_bp: 
-            if error: plt.errorbar(x_bp, y_bp, yerr=bp_err, fmt='none', ecolor='blue', elinewidth=0.5, capsize=3, alpha=0.4)
+            if error: plt.errorbar(x_bp, y_bp, yerr=bp_err, fmt='none', ecolor='blue', elinewidth=0.5, capsize=2, alpha=0.4)
             plt.scatter(x_bp, y_bp, c ='blue', s = 3, label='Bp Band')
+            if connect_points:
+                plt.plot(x_bp, y_bp, c='blue', s = '1')
         if plot_rp: 
-            if error: plt.errorbar(x_rp, y_rp, yerr=rp_err, fmt='none', ecolor='red', elinewidth=0.5, capsize=3, alpha=0.4)
+            if error: plt.errorbar(x_rp, y_rp, yerr=rp_err, fmt='none', ecolor='red', elinewidth=0.5, capsize=2, alpha=0.4)
             plt.scatter(x_rp, y_rp, c ='red', s = 3, label='Rp Band')
+            if connect_points:
+                            plt.plot(x_rp, y_rp, c='red', s = '1')
         plt.title(title)
         plt.legend()
         plt.gca().invert_yaxis()
@@ -206,6 +230,8 @@ def lightcurve(
                     alpha=0.4,           # reduce clutter, makes it slightly transparent
                 )
             axes[0].scatter(x_g, y_g, c ='green', s = 4, label='G Band')
+            if connect_points:
+                axes[0].plot(x_g, y_g, c='green', s = '1')
             axes[0].legend()
             axes[0].invert_yaxis()
     
@@ -213,7 +239,18 @@ def lightcurve(
             #axes[1].set_title(plot_title)
             axes[1].set_xlabel(x_label)
             axes[1].set_ylabel("Bp Band (app mag)")
+            if error: axes[1].errorbar(
+                    x_bp, y_bp,
+                    yerr=bp_err,
+                    fmt='none',
+                    ecolor='blue',       # error bar color
+                    elinewidth=0.5,
+                    capsize=2,
+                    alpha=0.4,           # reduce clutter, makes it slightly transparent
+                )
             axes[1].scatter(x_bp, y_bp, c ='blue', s = 4, label='Bp Band')
+            if connect_points:
+                axes[1].plot(x_bp, y_bp, c='blue', s = '1')
             axes[1].legend()
             axes[1].invert_yaxis()
     
@@ -221,7 +258,18 @@ def lightcurve(
             #axes[2].set_title(plot_title)
             axes[2].set_xlabel(x_label)
             axes[2].set_ylabel("Rp Band (app mag)")
+            if error: axes[2].errorbar(
+                    x_rp, y_rp,
+                    yerr=rp_err,
+                    fmt='none',
+                    ecolor='red',       # error bar color
+                    elinewidth=0.5,
+                    capsize=2,
+                    alpha=0.4,           # reduce clutter, makes it slightly transparent
+                )
             axes[2].scatter(x_rp, y_rp, c ='red', s = 4, label='Rp Band')
+            if connect_points:
+                axes[2].plot(x_rp, y_rp, c='red', s = '1')
             axes[2].legend()
             axes[2].invert_yaxis()
 
