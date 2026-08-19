@@ -195,17 +195,17 @@ def lightcurve(
             if error: plt.errorbar(x_g, y_g, yerr=g_err, fmt='none', ecolor='green', elinewidth=0.5, capsize=2, alpha=0.4)
             plt.scatter(x_g, y_g, c ='green', s = 3, label='G Band')
             if connect_points:
-                plt.plot(x_g, y_g, c='green', s = '1')
+                plt.plot(x_g, y_g, c='green', lw = 1)
         if plot_bp: 
             if error: plt.errorbar(x_bp, y_bp, yerr=bp_err, fmt='none', ecolor='blue', elinewidth=0.5, capsize=2, alpha=0.4)
             plt.scatter(x_bp, y_bp, c ='blue', s = 3, label='Bp Band')
             if connect_points:
-                plt.plot(x_bp, y_bp, c='blue', s = '1')
+                plt.plot(x_bp, y_bp, c='blue', lw = 1)
         if plot_rp: 
             if error: plt.errorbar(x_rp, y_rp, yerr=rp_err, fmt='none', ecolor='red', elinewidth=0.5, capsize=2, alpha=0.4)
             plt.scatter(x_rp, y_rp, c ='red', s = 3, label='Rp Band')
             if connect_points:
-                            plt.plot(x_rp, y_rp, c='red', s = '1')
+                plt.plot(x_rp, y_rp, c='red', lw = 1)
         plt.title(title)
         plt.legend()
         plt.gca().invert_yaxis()
@@ -231,7 +231,7 @@ def lightcurve(
                 )
             axes[0].scatter(x_g, y_g, c ='green', s = 4, label='G Band')
             if connect_points:
-                axes[0].plot(x_g, y_g, c='green', s = '1')
+                axes[0].plot(x_g, y_g, c='green', lw = 1)
             axes[0].legend()
             axes[0].invert_yaxis()
     
@@ -250,7 +250,7 @@ def lightcurve(
                 )
             axes[1].scatter(x_bp, y_bp, c ='blue', s = 4, label='Bp Band')
             if connect_points:
-                axes[1].plot(x_bp, y_bp, c='blue', s = '1')
+                axes[1].plot(x_bp, y_bp, c='blue', lw = 1)
             axes[1].legend()
             axes[1].invert_yaxis()
     
@@ -269,7 +269,7 @@ def lightcurve(
                 )
             axes[2].scatter(x_rp, y_rp, c ='red', s = 4, label='Rp Band')
             if connect_points:
-                axes[2].plot(x_rp, y_rp, c='red', s = '1')
+                axes[2].plot(x_rp, y_rp, c='red', lw = 1)
             axes[2].legend()
             axes[2].invert_yaxis()
 
