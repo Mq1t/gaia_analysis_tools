@@ -448,7 +448,8 @@ def pdm(
         bins:int|float = 50, 
         covers:int = 3, 
         freq_range:list[int|float] = [0.01, 10.0, 0.001], 
-        plot = False, 
+        plot:bool = False, 
+        plot_x_period: bool = True,
         save_data: bool = False,
         data_file: str = "pdm_data",
         save_plot: bool = False,
@@ -468,6 +469,8 @@ def pdm(
         freq_range (list[float], optional): Frequency range of the PDM analysis, defaults to [0.01, 10.0, 0.001], 
             where the third value is increment.
         plot (bool, optional): If True, display the PDM analysis as a plot. Defaults to False.
+        plot_x_period (bool, optional): Only applies if plot is true. Sets plot x axis to be in period days by using 1/frequencies. 
+            If False, x-axis will be frequencies. Default True.
         save_data (bool, optional): If true, saves plot as a CSV file. Defaults to False. 
         data_file (str, optional): File name of the resulting data. Default is "pdm_data". File identifier is added automatically.
         save_plot (bool, optional): If true, saves plot as a PDF file. Defaults to False. 
@@ -498,7 +501,7 @@ def pdm(
     print("Best period =", best_period, "days")
 
     if plot == True:
-        plot_pdm(frequencies=frequencies, theta=theta, best_period=best_period, save=save_plot, title=title, file_name=plot_file, save_folder=save_folder)
+        plot_pdm(frequencies=frequencies, theta=theta, best_period=best_period, save=save_plot, title=title, file_name=plot_file, plot_x_period=plot_x_period, save_folder=save_folder)
     
     df = pd.DataFrame({"period":periods, "frequency":frequencies, "theta":theta})
 
@@ -516,13 +519,17 @@ def pdm(
     
     return (df)
 
-def plot_pdm(frequencies, theta, best_period:float = None, save:bool=False, title:str= "PDM Plot", file_name:str="pdm_plot", save_folder: str = default_folder):
+def plot_pdm(frequencies, theta, best_period:float = None, save:bool=False, title:str= "PDM Plot", file_name:str="pdm_plot", plot_x_period:bool == True, save_folder: str = default_folder):
     plt.figure(figsize=(8,5))
-    plt.plot(1/frequencies, theta, 'k-')
+    xlabel = "Frequency"
+    if plot_x_period == True:
+        xlabel = "Period (days)"
+        frequencies = 1/frequencies
+    plt.plot(frequencies, theta, 'k-')
     if(best_period is not None):
         plt.axvline(best_period, c='red', label=f"Best Period: {best_period:6f} days")
-    plt.xlabel("Period (days)")
     plt.ylabel("Theta")
+    plt.xlabel(xlabel)
     plt.legend()
     plt.title(title)
 
