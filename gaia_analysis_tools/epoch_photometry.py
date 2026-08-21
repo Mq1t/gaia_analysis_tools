@@ -519,7 +519,7 @@ def pdm(
     
     return (df)
 
-def plot_pdm(frequencies, theta, best_period:float = None, save:bool=False, title:str= "PDM Plot", file_name:str="pdm_plot", plot_x_period:bool == True, save_folder: str = default_folder):
+def plot_pdm(frequencies, theta, best_period:float = None, save:bool=False, title:str= "PDM Plot", file_name:str="pdm_plot", plot_x_period:bool = True, save_folder: str = default_folder):
     plt.figure(figsize=(8,5))
     xlabel = "Frequency"
     if plot_x_period == True:
