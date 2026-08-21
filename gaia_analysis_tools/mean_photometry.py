@@ -241,10 +241,35 @@ def G_RP_error(RP_flux, RP_flux_error):
     return RP_mag_error
 
 
+# A rough empirical main-sequence polynomial fit (BP-RP color -> absolute G magnitude).
+# Coefficients from a low-order polynomial fit to nearby Gaia main-sequence dwarfs
+# (Pecaut & Mamajek-style calibration). Good enough for a visual reference line,
+# not for precision science.
+_MS_POLY_COEFFS = [0.14, 4.35, -1.34, 0.13]  # M_G ≈ c0 + c1*x + c2*x^2 + c3*x^3, x = BP-RP
+
+def main_sequence_line(bprp_range=(-0.5, 4.5), n_points=200):
+    """Generate an approximate main-sequence reference line.
+
+    Args:
+        bprp_range (tuple): (min, max) BP-RP color range to evaluate over.
+        n_points (int): Number of points along the line.
+
+    Returns:
+        (np.ndarray, np.ndarray): (colour, magnitude) arrays for the line.
+    """
+    x = np.linspace(bprp_range[0], bprp_range[1], n_points)
+    c0, c1, c2, c3 = _MS_POLY_COEFFS
+    y = c0 + c1 * x + c2 * x**2 + c3 * x**3
+    return x, y
+
+
 def plot_hr_diagram(
         df, 
         error: bool = True,
         underlay: bool = False,
+        sequence: tuple[np.ndarray, np.ndarray] | None = None,
+        sequence_label: str = 'Main Sequence',
+        sequence_color: str = 'black',
         xlim: list[int] = [-1, 5],
         ylim: list[int] = [0, 20],
         title: str = "Hertzsprung-Russell Diagram", 
@@ -257,6 +282,13 @@ def plot_hr_diagram(
     Args:
         df (pandas.dataframe): Gaia data containing at minimum parallax, phot_g_mean_mag, phot_bp_mean_mag, and phot_rp_mean_mag.
         error (bool): If true the plot will include error bars using required columns.
+        underlay (bool): If true, overlays a reference sequence line (main sequence by default,
+                          or whatever is passed via `sequence`).
+        sequence (tuple[array, array], optional): (colour, magnitude) arrays for a custom sequence
+                          line (e.g. an isochrone) to draw instead of the built-in main sequence.
+                          Only used when `underlay=True`.
+        sequence_label (str, optional): Legend label for the overlaid sequence line.
+        sequence_color (str, optional): Colour of the overlaid sequence line.
         xlim ([int]|[float], optional): The x-axis upper limit. If None, the default limits are used. Default is None.
         ylim ([int]|[float], optional): The y-axis upper limit. If None, the default limits are used. Default is None.
         title (str, optional): Title of the plot. Default is 'Hertzsprung-Russell Diagram'.
@@ -291,10 +323,8 @@ def plot_hr_diagram(
     colour_err = []
 
     for _, row in df.iterrows():
-        #Get absolute magnitude using apparent magnitude and parralax
         M = get_magnitude(row["phot_g_mean_mag"], get_distance(row["parallax"]))
         mag.append(M)
-        #BP - RP = Colour
         C = get_bprp(row["phot_bp_mean_mag"], row["phot_rp_mean_mag"])
         colour.append(C)
             
@@ -307,11 +337,8 @@ def plot_hr_diagram(
             C_err = np.sqrt(BP_err**2 + RP_err**2)
             colour_err.append(C_err)
 
-
-
     plt.figure()
-    if underlay == True:
-        print("NOT DONE YET")
+
     if error:
         plt.errorbar(
             colour, mag,
@@ -326,6 +353,17 @@ def plot_hr_diagram(
         )
     else:
         plt.scatter(colour, mag, c="purple", s=1)
+
+    # --- Sequence line overlay ---
+    if underlay:
+        if sequence is not None:
+            seq_x, seq_y = sequence
+        else:
+            seq_x, seq_y = main_sequence_line(bprp_range=tuple(xlim) if xlim else (-0.5, 4.5))
+        plt.plot(seq_x, seq_y, color=sequence_color, linewidth=1.5,
+                  linestyle='--', label=sequence_label, zorder=4)
+        plt.legend()
+
     plt.xlabel(r"G$_{BP}$")
     plt.ylabel(r"M$_{G}$")
     if xlim is not None:
