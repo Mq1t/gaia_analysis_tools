@@ -2,7 +2,10 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 from scipy.optimize import curve_fit
+from scipy.interpolate import PchipInterpolator
 import os
+
+from .constants import MAIN_SEQUENCE_TABLE, HRD_REGION_LABELS
 
 default_folder = None 
 style = 'seaborn-v0_8-darkgrid'
@@ -241,35 +244,53 @@ def G_RP_error(RP_flux, RP_flux_error):
     return RP_mag_error
 
 
-# A rough empirical main-sequence polynomial fit (BP-RP color -> absolute G magnitude).
-# Coefficients from a low-order polynomial fit to nearby Gaia main-sequence dwarfs
-# (Pecaut & Mamajek-style calibration). Good enough for a visual reference line,
-# not for precision science.
-_MS_POLY_COEFFS = [0.14, 4.35, -1.34, 0.13]  # M_G ≈ c0 + c1*x + c2*x^2 + c3*x^3, x = BP-RP
+#This calculates a main sequence line on the Hertzpring Russel Diagram function when the parameter "underlay" is True
+_MS_TABLE_X = np.array([p[0] for p in MAIN_SEQUENCE_TABLE])
+_MS_TABLE_Y = np.array([p[1] for p in MAIN_SEQUENCE_TABLE])
+_MS_INTERPOLATOR = PchipInterpolator(_MS_TABLE_X, _MS_TABLE_Y)
 
 def main_sequence_line(bprp_range=(-0.5, 4.5), n_points=200):
-    """Generate an approximate main-sequence reference line.
+    """Generate an empirical main-sequence reference line.
+
+    Interpolates the tabulated Pecaut & Mamajek (2013, updated) dwarf-star
+    sequence of (BP-RP, M_G) points with a monotonic cubic Hermite
+    interpolant (PCHIP), so the line follows the real, non-polynomial shape
+    of the main sequence (including the steep faintening of the M-dwarf end)
+    instead of the overshoot/turnover a single global polynomial fit produces.
 
     Args:
         bprp_range (tuple): (min, max) BP-RP color range to evaluate over.
+                             Clipped to the range actually covered by the
+                             reference table (approximately -0.62 to 5.10);
+                             a range entirely outside that coverage raises
+                             ValueError.
         n_points (int): Number of points along the line.
 
     Returns:
         (np.ndarray, np.ndarray): (colour, magnitude) arrays for the line.
     """
-    x = np.linspace(bprp_range[0], bprp_range[1], n_points)
-    c0, c1, c2, c3 = _MS_POLY_COEFFS
-    y = c0 + c1 * x + c2 * x**2 + c3 * x**3
+    lo = max(bprp_range[0], _MS_TABLE_X.min())
+    hi = min(bprp_range[1], _MS_TABLE_X.max())
+    if lo >= hi:
+        raise ValueError(
+            f"bprp_range {bprp_range} does not overlap the main-sequence "
+            f"reference table's coverage ({_MS_TABLE_X.min():.2f} to "
+            f"{_MS_TABLE_X.max():.2f})."
+        )
+    x = np.linspace(lo, hi, n_points)
+    y = _MS_INTERPOLATOR(x)
     return x, y
 
 
 def plot_hr_diagram(
-        df, 
+        df,
         error: bool = True,
-        underlay: bool = False,
+        point_colour: str = 'blue',
+        underlay: bool = True,
+        bg_labels: bool = True,
         sequence: tuple[np.ndarray, np.ndarray] | None = None,
         sequence_label: str = 'Main Sequence',
-        sequence_color: str = 'black',
+        sequence_colour: str = 'black',
         xlim: list[int] = [-1, 5],
         ylim: list[int] = [0, 20],
         title: str = "Hertzsprung-Russell Diagram", 
@@ -282,13 +303,17 @@ def plot_hr_diagram(
     Args:
         df (pandas.dataframe): Gaia data containing at minimum parallax, phot_g_mean_mag, phot_bp_mean_mag, and phot_rp_mean_mag.
         error (bool): If true the plot will include error bars using required columns.
+        point_colour (str, optional): Colour of the points.
         underlay (bool): If true, overlays a reference sequence line (main sequence by default,
                           or whatever is passed via `sequence`).
+        bg_labels (bool): If true, draws approximate, illustrative text labels marking where
+                          white dwarfs, giants, and supergiants typically sit on the diagram
+                          (see HRD_REGION_LABELS in constants.py). Independent of `underlay`.
         sequence (tuple[array, array], optional): (colour, magnitude) arrays for a custom sequence
                           line (e.g. an isochrone) to draw instead of the built-in main sequence.
                           Only used when `underlay=True`.
         sequence_label (str, optional): Legend label for the overlaid sequence line.
-        sequence_color (str, optional): Colour of the overlaid sequence line.
+        sequence_colour (str, optional): Colour of the overlaid sequence line.
         xlim ([int]|[float], optional): The x-axis upper limit. If None, the default limits are used. Default is None.
         ylim ([int]|[float], optional): The y-axis upper limit. If None, the default limits are used. Default is None.
         title (str, optional): Title of the plot. Default is 'Hertzsprung-Russell Diagram'.
@@ -346,13 +371,14 @@ def plot_hr_diagram(
             yerr=mag_err,
             fmt='none',
             markersize=1,
-            ecolor='gray',
+            c=point_colour,
+            ecolor=point_colour,
             elinewidth=0.5,
             capsize=1,
             alpha=0.4
         )
     else:
-        plt.scatter(colour, mag, c="purple", s=1)
+        plt.scatter(colour, mag, c=colour, s=1)
 
     # --- Sequence line overlay ---
     if underlay:
@@ -360,11 +386,36 @@ def plot_hr_diagram(
             seq_x, seq_y = sequence
         else:
             seq_x, seq_y = main_sequence_line(bprp_range=tuple(xlim) if xlim else (-0.5, 4.5))
-        plt.plot(seq_x, seq_y, color=sequence_color, linewidth=1.5,
+        plt.plot(seq_x, seq_y, color=sequence_colour, linewidth=1.5,
                   linestyle='--', label=sequence_label, zorder=4)
         plt.legend()
 
-    plt.xlabel(r"G$_{BP}$")
+    # --- Approximate region labels (white dwarfs, giants, supergiants) ---
+    # Illustrative anchor points only, not precise boundaries or a
+    # classification model (see HRD_REGION_LABELS in constants.py for
+    # sourcing). Positions are clipped to the current xlim/ylim so a
+    # label for a population outside the current view (e.g. supergiants
+    # under the default ylim=[0, 20]) is pinned to the nearest edge
+    # rather than disappearing off-plot. Controlled independently of
+    # `underlay` via `bg_labels`.
+    if bg_labels:
+        x_bounds = (min(xlim), max(xlim)) if xlim else None
+        y_bounds = (min(ylim), max(ylim)) if ylim else None
+        for region_label, label_bprp, label_mg in HRD_REGION_LABELS:
+            label_x = np.clip(label_bprp, *x_bounds) if x_bounds else label_bprp
+            label_y = np.clip(label_mg, *y_bounds) if y_bounds else label_mg
+            plt.annotate(
+                region_label,
+                xy=(label_x, label_y),
+                fontsize=9,
+                color='dimgray',
+                style='italic',
+                ha='center',
+                va='center',
+                zorder=6,
+            )
+
+    plt.xlabel(r"G$_{BP}$ - G$_{RP}$")
     plt.ylabel(r"M$_{G}$")
     if xlim is not None:
         plt.xlim(xlim)
